@@ -1,0 +1,125 @@
+# Git Basics
+
+This guide explains the **core concepts and commands of Git** for complete beginners.  
+Git is a *version control system* that tracks changes in your files and helps you work safely on projects, alone or with others.
+
+---
+
+## What Git Does
+- **Tracks history** of your files so you can see what changed and when.
+- **Creates versions** (commits) you can roll back to if something breaks.
+- **Synchronizes** work between computers and people through online platforms like GitHub or GitLab.
+
+---
+
+## Key Concepts
+| Term        | Meaning                                                                 |
+|-------------|-------------------------------------------------------------------------|
+| **Repository (repo)** | The project folder tracked by Git. |
+| **Commit**  | A snapshot of your files at a point in time. |
+| **Branch**  | A separate line of development (e.g. `main`, `feature-x`). |
+| **Remote**  | A copy of your repo stored online (e.g. GitHub). |
+| **Clone**   | A local copy of a remote repo. |
+| **Push/Pull** | Send changes to or get changes from the remote repo. |
+
+---
+
+## Setup
+1. [Install Git](https://git-scm.com/downloads) for your operating system.  
+2. Configure your name and email (used in commits):
+
+   ```
+   git config --global user.name "Your Name"
+   git config --global user.email "you@example.com"
+   ```
+
+---
+
+## Start a New Repository
+Inside your project folder:
+
+```
+git init
+```
+This creates a hidden `.git` directory where Git stores history.
+
+---
+
+## Track Files and Commit Changes
+1. **Stage files** (mark them for the next commit):
+
+   ```
+   git add .
+   ```
+   (`.` means all changed files)
+
+2. **Commit** (save a snapshot with a message):
+
+   ```
+   git commit -m "Describe your change"
+   ```
+
+Repeat `add` + `commit` whenever you make meaningful changes.
+
+---
+
+## Connect to GitHub
+1. Create an empty repo on GitHub.  
+2. Link it to your local repo:
+
+   ```
+   git remote add origin https://github.com/USERNAME/REPO.git
+   ```
+
+3. Upload your commits:
+
+   ```
+   git push -u origin main
+   ```
+
+---
+
+## Working with Updates
+- Get the latest changes:
+
+  ```
+  git pull
+  ```
+
+- View history:
+
+  ```
+  git log --oneline
+  ```
+
+---
+
+## Branching (Optional but Powerful)
+Create a new branch:
+
+```
+git checkout -b feature-name
+```
+
+Switch between branches:
+
+```
+git checkout main
+```
+
+Merge your branch back into main:
+
+```
+git merge feature-name
+```
+
+---
+
+## Next Steps
+- Practice by making small edits and commits.  
+- Learn more commands: [`git status`](https://git-scm.com/docs/git-status), [`git diff`](https://git-scm.com/docs/git-diff).  
+- Explore [GitHub Guides](https://guides.github.com/) for collaboration tips.
+
+---
+
+**Tip:** Commit often with clear messages. It keeps your history useful and easy to navigate.
