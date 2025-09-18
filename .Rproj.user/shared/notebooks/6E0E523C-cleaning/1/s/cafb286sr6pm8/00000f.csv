@@ -1,0 +1,6 @@
+"0","tb.endperiod[[""personid""]] <- as.integer(tb.endperiod[[""personid""]])"
+"0","tb.endperiod[[""promote_switch""]] <- as.logical(as.integer(tb.endperiod[[""promote_switch""]]))"
+"0","tb.endperiod[[""quitjob""]] <- as.logical(as.integer(tb.endperiod[[""quitjob""]]))"
+"0","tb.endperiod[[""costofcommute""]]<- gsub(""[^0-9.]"", """", tb.endperiod[[""costofcommute""]])"
+"0","tb.endperiod[[""costofcommute""]] <- as.numeric(tb.endperiod[[""costofcommute""]])"
+"0",""

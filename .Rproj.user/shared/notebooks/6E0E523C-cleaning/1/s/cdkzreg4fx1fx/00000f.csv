@@ -1,0 +1,4 @@
+"0","tb.attitude[[""personid""]] = as.integer(tb.attitude[[""personid""]])"
+"0","# year_week should stay as string as it will be easier to distinct between year and month later on"
+"0","# exhausting, negative and postive all contain float values therefore they should not be converted to an integer to avoid information loss"
+"0",""
