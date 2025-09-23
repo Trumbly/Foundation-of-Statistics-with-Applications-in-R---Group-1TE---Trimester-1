@@ -190,6 +190,7 @@ tb.wage[["bonustotal"]] <- as.numeric(tb.wage[["bonustotal"]])
 ```{r}
 tb.worker_details <- merge(tb.endperiod, tb.sum_vul, by="personid", all=TRUE)
 tb.perf_attitude <- merge(tb.perf, tb.attitude, by=c("personid", "year_week"))
+tb.perf_attitude <- merge(tb.perf_attitude, tb.worker_details, by=c("personid"))
 ```
 
 ```{r}
@@ -201,3 +202,7 @@ tb.attitude %>% group_by(personid, year_week) %>% filter(n()>1)
 ```
 
 Note: all now resulted dataframes still contain NA values
+
+## Exploration
+
+# Results

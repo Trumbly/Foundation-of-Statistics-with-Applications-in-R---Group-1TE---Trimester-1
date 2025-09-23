@@ -1,1 +1,3 @@
-"0","tb.perf %>% group_by(personid, year_week) %>% filter(n()>1)"
+"0","tb.worker_details <- merge(tb.endperiod, tb.sum_vul, by=""personid"", all=TRUE)"
+"0","tb.perf_attitude <- merge(tb.perf, tb.attitude, by=c(""personid"", ""year_week""))"
+"0","tb.perf_attitude <- merge(tb.perf_attitude, tb.worker_details, by=c(""personid""))"
