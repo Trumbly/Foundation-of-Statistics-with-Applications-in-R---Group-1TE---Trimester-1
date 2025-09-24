@@ -1,7 +1,0 @@
-"0","tb.wage[[""personid""]] <- as.integer(tb.wage[[""personid""]])"
-"0","tb.wage[[""basewage""]] <- as.integer(tb.wage[[""basewage""]])"
-"0","tb.wage[[""grosswage""]] <- as.numeric(tb.wage[[""grosswage""]])"
-"0","tb.wage[[""wage_month""]] <- trimws(tb.wage[[""wage_month""]])"
-"0","tb.wage[[""wage_month""]]<- gsub(""[^0-9.]"", """", tb.wage[[""wage_month""]])"
-"0","tb.wage <- rename(tb.wage, year_month=wage_month)"
-"0","tb.wage[[""bonustotal""]] <- as.numeric(tb.wage[[""bonustotal""]])"

@@ -1,0 +1,426 @@
+---
+title: "notebook"
+output: github_document
+date: "2025-09-16"
+---
+
+#rmarkdown::render("notebook.rmd", output_format = "github_document", params = list(fast = TRUE))
+---
+
+## Group Assignment Trimester 1 25/26
+
+You are a consultant for Pacific Insights Analytics (PIA), a boutique data analytics firm specializing in workforce performance. PIA has been hired by Huaxia Communications, a major Chinese company operating several large call centers across the country. Huaxia is facing rising operational challenges. Staff attrition is driving up recruitment and training costs and retaining top performers is becoming increasingly difficult. To address these issues, Huaxia has provided you with historical data from one of its call centers. This data comes from multiple administrative sources, including worker surveys, HR records, and call center productivity logs. Because the data was collected from different systems, it contains inconsistencies, formatting problems, and other quality issues. Your task is to clean, explore, and analyze the data in order to generate clear, evidence-based recommendations that can help Huaxia’s management improve retention and boost productivity. Important: You should not run any regression models. The goal is to understand the data and identify patterns that can inform management decisions through EDA and hypothesis testing.
+
+## Packages
+
+```{r}
+library(tidyverse)
+library(stargazer)
+library(haven)
+library(corrr)
+library(purrr)
+library(glue)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggcorrplot)
+library(glue)
+library(patchwork)  
+
+```
+
+## Loading the data
+
+```{r}
+data_perf <- read_dta("../data/performance_labeled.dta")
+data_attitude <- read_dta("../data/attitude_labeled.dta")
+data_endperiod <- read_dta("../data/endperiod_outcomes_labeled.dta")
+data_sum_vol <- read_dta("../data/summary_volunteer_labeled.dta")
+data_wage_new <- read_dta("../data/wage_new_labeled.dta")
+
+tb.perf <- as_tibble(data_perf)
+tb.attitude <- as_tibble(data_attitude)
+tb.endperiod <- as_tibble(data_endperiod)
+tb.sum_vul <- as_tibble(data_sum_vol)
+tb.wage <- as_tibble(data_wage_new)
+
+rm(data_perf)
+rm(data_attitude)
+rm(data_endperiod)
+rm(data_sum_vol)
+rm(data_wage_new)
+```
+
+# Cleaning data
+
+## Clean summary_volunteer_labeled
+
+```{r}
+glimpse(tb.sum_vul)
+```
+
+```{r}
+# remove null values
+#tb.sum_vul[is.na(tb.sum_vul)] <- 0  # Replace NA with 0
+
+# convert ID to integer
+tb.sum_vul[["personid"]] <- as.integer(tb.sum_vul[["personid"]])
+
+# Clean Numbers with Extra Characters
+# Remove non-numeric characters (e.g., commas, spaces)
+tb.sum_vul[["commute"]]<- gsub("[^0-9.]", "", tb.sum_vul[["commute"]])
+tb.sum_vul[["commute"]] <- as.integer(tb.sum_vul[["commute"]])
+
+# convert "no" strings in the children column to 0 children
+tb.sum_vul[["children"]] <- ifelse(tb.sum_vul[["children"]] %in% c("No", ""), "0", tb.sum_vul[["children"]])
+# convert to boolean by first converting to integer
+tb.sum_vul[["children"]] <- as.logical(as.integer(tb.sum_vul[["children"]]))
+# Convert Tenure to integer, as float dont make sense for months
+tb.sum_vul[["tenure"]] <- as.integer(tb.sum_vul[["tenure"]])
+
+# convert bedroom to boolean by first converting 0s to False, 1 to true
+tb.sum_vul[["bedroom"]]<- ifelse(
+    tb.sum_vul[["bedroom"]] == "0", 
+    "False", 
+    "True"
+    )
+tb.sum_vul[["bedroom"]] <- as.logical(tb.sum_vul[["bedroom"]])
+# normalize gender data by
+# lower all charcters
+tb.sum_vul[["gender"]] <- tolower(tb.sum_vul[["gender"]])
+# trim whitespaces
+tb.sum_vul[["gender"]] <- trimws(tb.sum_vul[["gender"]])
+# cast all possible options for male and female
+tb.sum_vul[["gender"]] <- ifelse(tb.sum_vul[["gender"]] %in% c("m", "male", "man"), "male", tb.sum_vul[["gender"]])
+tb.sum_vul[["gender"]] <- ifelse(tb.sum_vul[["gender"]] %in% c("woman", "female", "f", "w","fem"), "female", tb.sum_vul[["gender"]])
+
+# using a similar approach to the gender we convert the married status now
+tb.sum_vul[["married"]] <- tolower(tb.sum_vul[["married"]])
+# trim whitespaces
+tb.sum_vul[["married"]] <- trimws(tb.sum_vul[["married"]])
+# cast all possible options for married/not married
+tb.sum_vul[["married"]] <- ifelse(tb.sum_vul[["married"]] %in% c("married", "yes", "y", "true"), "TRUE", tb.sum_vul[["married"]])
+tb.sum_vul[["married"]] <- ifelse(tb.sum_vul[["married"]] %in% c("no", "not married", "n", "na", "single","false"), "FALSE", tb.sum_vul[["married"]])
+
+# using a similar approach to the married column we convert the high_educ status now
+tb.sum_vul[["high_educ"]] <- tolower(tb.sum_vul[["high_educ"]])
+# trim whitespaces
+tb.sum_vul[["high_educ"]] <- trimws(tb.sum_vul[["high_educ"]])
+# cast all possible options for high_educ/not high_educ
+tb.sum_vul[["high_educ"]] <- ifelse(tb.sum_vul[["high_educ"]] %in% c("yes", "y"), "TRUE", tb.sum_vul[["high_educ"]])
+tb.sum_vul[["high_educ"]] <- ifelse(tb.sum_vul[["high_educ"]] %in% c("no", "n","false"), "FALSE", tb.sum_vul[["high_educ"]])
+
+# convert to boolean
+tb.sum_vul[["high_educ"]] <- as.logical(tb.sum_vul[["high_educ"]])
+# Convert to numeric (if appropriate)
+#tb.sum_vul <- as.numeric(tb.sum_vul) 
+```
+
+## Cleaning tb.attitude
+
+```{r}
+glimpse(tb.attitude)
+unique(tb.attitude[["exhausting"]])
+unique(tb.attitude[["positive"]])
+unique(tb.attitude[["negative"]])
+```
+
+```{r}
+tb.attitude[["personid"]] = as.integer(tb.attitude[["personid"]])
+# year_week should stay as string as it will be easier to distinct between year and month later on
+# exhausting, negative and postive all contain float values therefore they should not be converted to an integer to avoid information loss
+
+```
+
+## Clean tb.endperiod
+
+```{r}
+glimpse(tb.endperiod)
+```
+
+```{r}
+tb.endperiod[["personid"]] <- as.integer(tb.endperiod[["personid"]])
+tb.endperiod[["promote_switch"]] <- as.logical(as.integer(tb.endperiod[["promote_switch"]]))
+tb.endperiod[["quitjob"]] <- as.logical(as.integer(tb.endperiod[["quitjob"]]))
+tb.endperiod[["costofcommute"]]<- gsub("[^0-9.]", "", tb.endperiod[["costofcommute"]])
+tb.endperiod[["costofcommute"]] <- as.numeric(tb.endperiod[["costofcommute"]])
+
+```
+
+## Clean tb.perf
+
+```{r}
+glimpse(tb.perf)
+#unique(tb.perf[["year_week"]])
+unique(tb.perf[["homethatweek"]])
+```
+
+```{r}
+tb.perf[["personid"]] <- as.integer(tb.perf[["personid"]])
+# trim year_week and remove all not nuemerical characters
+tb.perf[["year_week"]] <- trimws(tb.perf[["year_week"]])
+tb.perf[["year_week"]]<- gsub("[^0-9.]", "", tb.perf[["year_week"]])
+# convert to float/doubles
+tb.perf[["perform1"]] <- as.numeric(tb.perf[["perform1"]])
+tb.perf[["phonecall"]] <- as.numeric(tb.perf[["phonecall"]])
+# convert to integer
+tb.perf[["phonecallraw"]] <- as.integer(tb.perf[["phonecallraw"]])
+# convert to boolean
+tb.perf[["homethatweek"]] <- as.logical(as.integer(tb.perf[["homethatweek"]]))
+# convert to float/doubles
+tb.perf[["logphonecall"]] <- as.numeric(tb.perf[["logphonecall"]])
+tb.perf[["logcallpersec"]] <- as.numeric(tb.perf[["logcallpersec"]])
+tb.perf[["logcalllength"]] <- as.numeric(tb.perf[["logcalllength"]])
+tb.perf[["logcall_dayworked"]] <- as.numeric(tb.perf[["logcall_dayworked"]])
+tb.perf[["logdaysworked"]] <- as.numeric(tb.perf[["logdaysworked"]])
+# convert to Date
+tb.perf[["date"]] <- as.Date(tb.perf[["date"]])
+```
+
+## Clean tb.wage
+
+```{r}
+glimpse(tb.wage)
+#unique(tb.wage[["basewage"]])
+```
+
+```{r}
+tb.wage[["personid"]] <- as.integer(tb.wage[["personid"]])
+tb.wage[["basewage"]] <- as.integer(tb.wage[["basewage"]])
+tb.wage[["grosswage"]] <- as.numeric(tb.wage[["grosswage"]])
+tb.wage[["wage_month"]] <- trimws(tb.wage[["wage_month"]])
+tb.wage[["wage_month"]]<- gsub("[^0-9.]", "", tb.wage[["wage_month"]])
+tb.wage <- rename(tb.wage, year_month=wage_month)
+tb.wage[["bonustotal"]] <- as.numeric(tb.wage[["bonustotal"]])
+```
+
+# Merging data together
+
+```{r}
+tb.worker_details <- merge(tb.endperiod, tb.sum_vul, by="personid", all=TRUE)
+tb.perf_attitude <- merge(tb.perf, tb.attitude, by=c("personid", "year_week"))
+tb.perf_attitude <- merge(tb.perf_attitude, tb.worker_details, by=c("personid"))
+```
+
+```{r}
+tb.perf %>% group_by(personid, year_week) %>% filter(n()>1)
+```
+
+```{r}
+tb.attitude %>% group_by(personid, year_week) %>% filter(n()>1)
+```
+
+Note: all now resulted dataframes still contain NA values
+
+# Eploration
+
+## General correlations
+
+In this section we try to get as much information as possible by looking at the data.
+
+1.  We check for any correlation between any of our numerical value over the performance and attitude of all employees
+
+```{r}
+# use tb.perf_attitude as df; renaming for better readability
+df <- tb.perf_attitude
+# create.a correlation matrix for the full population
+cor_matrix <- df %>% 
+  correlate(diagonal = 1)
+
+cor_matrix %>%
+  rearrange() %>%            # rearrange by correlations
+  shave() %>%                # Shave off the upper triangle for a clean result
+  fashion(decimals = 3)      # Clean presentation
+
+
+# Correlation plot
+cor_matrix %>% rplot()
+```
+
+Here we can see that the performance metric "perform1" has a correlation to phonecall, phonecallraw, logphonecall, logcalllength, which gives us a hint on how this metrics was calculated. Furthermore we can see, a light negative correlation between "negative" and "positive" from the attitude dataset, which makes sense as these are opposites. Because of the timeseries data of the performance data set, the light correlation can be explained as the attitude may change from day to day, or not (what we can not infer from that). There is also a slight correlation between exhaustion and negative attitude, which may seem logical at first.
+
+## Subgroups/Personas of workers
+
+Though we have some correlation between some variables, most of them are not strong/significant, except the performance measurements and score which can be explained because the observational variables are used to calculate the score with a determined function. Therefore, a deeper exploration is needed, which we perform in this exploratory approach by identifying subgroups of all observed workers by dividing them using the categorical variables (7) to create individual groups, where a maximum of 49 are possible. After Identifying the groups we will look at the correlations between all numerical variables within the groups. Doing so, we can identify certain personas for the groups, e.g. high performer, low performer, etc., in order to find more insights on how to solve our clients problems.
+
+### Create groups for the whole dataset of all performances, attitudes for all workers
+
+```{r}
+# define categorical variables
+cat_cols <- c("gender","married","high_educ","bedroom","children","promote_switch","quitjob", "homethatweek")
+
+# factors
+df <- df %>% mutate(across(all_of(cat_cols), ~ factor(.x)))
+
+# build grid of categories
+lvls <- lapply(df[cat_cols], levels)
+grid <- tidyr::expand_grid(!!!lvls)
+
+# remove personid as not needed for computations of groups
+df <- df %>% select(-`personid`)
+
+# create summary for each category/group of people working at the company
+summary_df <- df %>%
+  group_by(across(all_of(cat_cols))) %>%
+  summarise(
+    # add number per category to filter later
+    n = n(),
+    across(where(is.numeric),
+           list(mean = ~mean(.x, na.rm = TRUE),
+                sd   = ~sd(.x,   na.rm = TRUE),
+                med  = ~median(.x, na.rm = TRUE),
+                min  = ~min(.x, na.rm = TRUE),
+                max  = ~max(.x, na.rm = TRUE)),
+           .names = "{.col}_{.fn}"),
+)
+
+```
+
+using the summary_df we can get a more detailed glimpse for each group and their statistics to get a better understanding.
+
+### Create correlation matrices for all groups
+
+```{r}
+# create a funcition for create the correalation matrices as heatmap
+plot_cor_heatmap <- function(.x, title){
+  # "count" how many columns/numerical values we have from the given parameter .x
+  nums <- .x %>% select(where(is.numeric))
+  # where each column (numerical variable) should have at least 2 rows without NAs
+  # keep contains only the col names to keep based on the condition
+  keep <- sapply(nums, function(v) sum(!is.na(v)) > 1)
+  # drop cols which do not meet criteria
+  nums <- nums[, keep, drop = FALSE]
+  # if too few columns or too few rows to compute correlation, just return NULL
+  if (ncol(nums) < 2 || nrow(nums) < 3) return(NULL)
+  
+  # create the acutal matrics based on how many
+  cm <- cor(nums, use = "pairwise.complete.obs")
+  
+  # enforce alphabetical order of variables for consistent axes, to better compare plots later
+  ord <- sort(colnames(cm))
+  cm <- cm[ord, ord]
+  
+  # create correlation plot, hc.order is important to keep our defined order
+  ggcorrplot(cm, hc.order = FALSE, lab = FALSE) +
+    ggtitle(title) +
+    theme(plot.title = element_text(hjust = 0.5, size = 10))
+}
+# use the function and across to dynamically create a matrix for each group we have in cat_cols
+# in the end we will have a list of our grouped worker matrices
+plots <- df %>%
+  group_by(across(all_of(cat_cols))) %>%
+  # for each group create a title and plot the matrix
+  group_map(~{
+    title <- glue::glue_collapse(glue("{names(.y)}={as.character(.y)}"), sep = " | ")
+    plot_cor_heatmap(.x, title)
+  })
+# define the size of the plot
+dev.new(width = 20, height = 8)
+# use wrap_plots to plot (multiple) of the plots
+wrap_plots(plots[1:2])  # show 2 plots at the same time and compare them
+```
+
+### Save the plots as image files
+
+```{r}
+# save each plot of the matrix (from ChatGPT)
+library(purrr)
+
+# build file names for each matrix from group variables
+group_names <- df %>%
+  distinct(across(all_of(cat_cols))) %>%
+  mutate(fname = pmap_chr(across(everything()),
+                          ~paste(cat_cols, c(...), sep="=", collapse="_"))) %>%
+  pull(fname)
+
+# match names to plots (plots list comes from previous code)
+valid_idx <- which(!sapply(plots, is.null))
+
+walk(valid_idx, function(i){
+  ggsave(
+    filename = paste0("/Users/max/Documents/Master/Courses/Statistics/Group Project/results/corr_", group_names[i], ".png"),
+    plot     = plots[[i]],
+    width    = 10,
+    height   = 8,
+    dpi      = 300
+  )
+})
+```
+
+## Analyzing the groups and identifying personas associated with them
+
+In general we have 23 groups with 7 different worker characteristics (bound to the worker) and one characteristic on if they worked at least once from how in that week of their performance. So the groups describe the performance of week of certain workers based on if they were working from home and their circumstances.
+
+For each group we will describe what the correlations implies for the group and compare them to each other.
+
+### Group 1:
+
+Male, unemployed employees with low education, with no access to the bedroom in the office, no promote options who not quit, who have not worked from home during that week:\
+
+```{r}
+wrap_plots(plots[1])
+```
+
+**Conclusions**
+
+1.  Call-volume metrics (raw counts, logs, calls per day, call length) cluster tightly, indicating they reflect the same workload.
+
+2.  Higher workload links to higher exhaustion and more negative mood.
+
+3.  Positive mood decreases with rising exhaustion and workload.
+
+4.  Faster call rate (calls per second) comes with shorter call length.
+
+This supports the idea that heavier work increases fatigue and worsens mood, while efficiency trades off with call duration.
+
+Furthermore we see clusters for the performance metrics, showing a very similar view as the general impression from the beginning.
+
+### Group 2:
+
+Male, unemployed employees with low education, with no access to the bedroom in the office, no promote options who not quit, who have worked from home during that week:
+
+```{r}
+wrap_plots(plots[2])
+```
+
+**Conclusions**
+
+The pattern matches the previous group: call-volume indicators remain tightly linked to each other and to exhaustion and negative mood. Positive mood still drops as workload rises. Logcallpersec again trades off with call length. No major structural shift is visible compared to the earlier matrix.
+
+There, for this type of individuals, working from home does not make a significant difference.
+
+### Group 3:
+
+Male, unemployed employees with low education, with access to the bedroom in the office, no promote options who not quit, who have not worked from home during that week:
+
+```{r}
+wrap_plots(plots[3])
+```
+
+**Conclusions**
+
+The core performance cluster (phonecall measures, performance, exhaustion, negative mood) remains strong.
+
+New: • Age tracks tenure and commuting cost, suggesting older employees stay longer and spend more on commuting. • Commute and cost are strongly linked as expected. • Positive mood still drops with higher workload and exhaustion. The structure is otherwise similar to earlier groups.Results
+
+### Group 4:
+
+Male, unemployed employees with low education, with access to the bedroom in the office, no promote options who not quit, who have not worked from home during that week:
+
+```{r}
+wrap_plots(plots[4])
+```
+
+**Conclusions**
+
+The same core workload cluster (phonecall measures, performance, exhaustion, negative mood) persists.\
+
+New demographics show:\
+
+• Age strongly raises commuting cost and distance.\
+
+• Commute and cost remain tightly linked.\
+
+• Positive mood again falls with higher workload and exhaustion.\
+
+Compared to the previous male subgroup, age is now more tied to commute cost but tenure links to age are weaker.
