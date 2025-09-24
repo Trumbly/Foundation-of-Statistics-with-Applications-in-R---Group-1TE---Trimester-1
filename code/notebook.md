@@ -1,10 +1,6 @@
-notebook
+Group Assignment Trimester 1 25/26
 ================
 2025-09-16
-
-## \#rmarkdown::render(“notebook.rmd”, output_format = “github_document”, params = list(fast = TRUE))
-
-## Group Assignment Trimester 1 25/26
 
 You are a consultant for Pacific Insights Analytics (PIA), a boutique
 data analytics firm specializing in workforce performance. PIA has been
