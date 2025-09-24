@@ -4,9 +4,6 @@ output: github_document
 date: "2025-09-16"
 ---
 
-#rmarkdown::render("notebook.rmd", output_format = "github_document", params = list(fast = TRUE))
----
-
 ## Group Assignment Trimester 1 25/26
 
 You are a consultant for Pacific Insights Analytics (PIA), a boutique data analytics firm specializing in workforce performance. PIA has been hired by Huaxia Communications, a major Chinese company operating several large call centers across the country. Huaxia is facing rising operational challenges. Staff attrition is driving up recruitment and training costs and retaining top performers is becoming increasingly difficult. To address these issues, Huaxia has provided you with historical data from one of its call centers. This data comes from multiple administrative sources, including worker surveys, HR records, and call center productivity logs. Because the data was collected from different systems, it contains inconsistencies, formatting problems, and other quality issues. Your task is to clean, explore, and analyze the data in order to generate clear, evidence-based recommendations that can help Huaxia’s management improve retention and boost productivity. Important: You should not run any regression models. The goal is to understand the data and identify patterns that can inform management decisions through EDA and hypothesis testing.
