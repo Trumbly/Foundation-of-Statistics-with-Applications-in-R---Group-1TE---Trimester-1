@@ -1,6 +1,6 @@
 ---
 title: "Group Assignment Trimester 1 25/26"
-output: github_document
+output: pdf
 date: "2025-09-16"
 ---
 
@@ -10,7 +10,6 @@ You are a consultant for Pacific Insights Analytics (PIA), a boutique data analy
 
 ```{r}
 library(tidyverse)
-library(stargazer)
 library(haven)
 library(corrr)
 library(purrr)
@@ -20,8 +19,11 @@ library(tidyr)
 library(ggplot2)
 library(ggcorrplot)
 library(glue)
-library(patchwork)  
-
+library(patchwork)
+library(lubridate)
+library(ISOweek)
+library(skimr)
+library(stargazer)
 ```
 
 ## Loading the data
@@ -33,11 +35,11 @@ data_endperiod <- read_dta("../data/endperiod_outcomes_labeled.dta")
 data_sum_vol <- read_dta("../data/summary_volunteer_labeled.dta")
 data_wage_new <- read_dta("../data/wage_new_labeled.dta")
 
-tb.perf <- as_tibble(data_perf)
-tb.attitude <- as_tibble(data_attitude)
-tb.endperiod <- as_tibble(data_endperiod)
-tb.sum_vul <- as_tibble(data_sum_vol)
-tb.wage <- as_tibble(data_wage_new)
+performance <- as_tibble(data_perf)
+attitude <- as_tibble(data_attitude)
+endperiod <- as_tibble(data_endperiod)
+volunteer <- as_tibble(data_sum_vol)
+wage <- as_tibble(data_wage_new)
 
 rm(data_perf)
 rm(data_attitude)
@@ -48,199 +50,457 @@ rm(data_wage_new)
 
 # Cleaning data
 
-## Clean summary_volunteer_labeled
+Here come some handy functions to reduce duplicate code for cleaning the data:
+
+Extract a numeric number from a string with different decimal separators:
 
 ```{r}
-glimpse(tb.sum_vul)
+extract_numeric <- function(x) {
+  # remove leading/trailing spaces
+  x <- trimws(x)
+  
+  # normalize dash types (en-dash, em-dash) to minus
+  x <- gsub("–|—", "-", x)  
+  
+  # allow scientific notation: replace commas in mantissa
+  if (grepl("[eE]", x)) {
+    # if comma before e → decimal comma
+    x <- sub(",", ".", x)
+    # remove thousand separators before e
+    x <- gsub("\\.(?=\\d{3}[eE])", "", x, perl = TRUE)
+    x <- gsub(",(?=\\d{3}[eE])", "", x, perl = TRUE)
+    return(as.numeric(x))
+  }
+  
+  # remove spaces
+  x <- gsub(" ", "", x)
+  
+  # case 1: comma used as decimal
+  if (grepl(",", x) & !grepl("\\.", x)) {
+    x <- gsub(",", ".", x)
+  }
+  
+  # case 2: both comma and dot appear
+  # assume comma is thousands separator, remove it
+  if (grepl(",.*\\.", x)) {
+    x <- gsub(",", "", x)
+  }
+  
+  as.numeric(x)
+}
+
+find_non_numeric_chars <- function(x) {
+  non_numeric <- gsub("[-0-9]", "", x)  # remove digits, minus, dot, comma
+  unique(non_numeric[non_numeric != ""])
+}
+
+find_non_numeric_rows <- function(x) {
+  non_numeric <- !grepl("^[-]?[0-9]+([0-9]+)?$",x) # remove digits, minus, dot, comma
+  non_numeric <- non_numeric[non_numeric != ""]
+  x[non_numeric]
+}
 ```
 
+## Clean volunteer
+
+```{r, echo=FALSE, results='asis'}
+glimpse(volunteer)
+stargazer(as.data.frame(volunteer), type = "text", median = TRUE, header = FALSE)
+
+# check character columns with numerical values to extract for non numeric chars to
+# be aware for special cases
+find_non_numeric_chars(volunteer$commute)
+find_non_numeric_rows(volunteer$commute)
+# here we only need to take care of the decimal dots (will be added to the extraction function)
+```
+
+We can see a lot of columns with numerical values within strstrings and additional chars. Furthermore, categorical variables like married and gender contain different labels for the same categories.
+
 ```{r}
-# remove null values
-#tb.sum_vul[is.na(tb.sum_vul)] <- 0  # Replace NA with 0
-
-# convert ID to integer
-tb.sum_vul[["personid"]] <- as.integer(tb.sum_vul[["personid"]])
-
-# Clean Numbers with Extra Characters
-# Remove non-numeric characters (e.g., commas, spaces)
-tb.sum_vul[["commute"]]<- gsub("[^0-9.]", "", tb.sum_vul[["commute"]])
-tb.sum_vul[["commute"]] <- as.integer(tb.sum_vul[["commute"]])
+# convert to integer to remove leading zeros an than to str
+volunteer$personid <- as.character(as.integer(volunteer$personid))
+# Clean Numbers with extra characters
+# Remove non-numeric characters, except dots and commas and convert to numeric
+volunteer[["commute"]] <- sapply(volunteer$commute, extract_numeric)
+volunteer[["commute"]] <- as.numeric(volunteer[["commute"]])
 
 # convert "no" strings in the children column to 0 children
-tb.sum_vul[["children"]] <- ifelse(tb.sum_vul[["children"]] %in% c("No", ""), "0", tb.sum_vul[["children"]])
+volunteer[["children"]] <- ifelse(volunteer[["children"]] %in% c("No", ""), "0", volunteer[["children"]])
 # convert to boolean by first converting to integer
-tb.sum_vul[["children"]] <- as.logical(as.integer(tb.sum_vul[["children"]]))
+volunteer[["children"]] <- as.logical(as.integer(volunteer[["children"]]))
 # Convert Tenure to integer, as float dont make sense for months
-tb.sum_vul[["tenure"]] <- as.integer(tb.sum_vul[["tenure"]])
+volunteer[["tenure"]] <- as.integer(volunteer[["tenure"]])
 
 # convert bedroom to boolean by first converting 0s to False, 1 to true
-tb.sum_vul[["bedroom"]]<- ifelse(
-    tb.sum_vul[["bedroom"]] == "0", 
-    "False", 
-    "True"
+volunteer[["bedroom"]]<- ifelse(
+    volunteer[["bedroom"]] == "0", 
+    0, 
+    1
     )
-tb.sum_vul[["bedroom"]] <- as.logical(tb.sum_vul[["bedroom"]])
+volunteer[["bedroom"]] <- as.integer(volunteer[["bedroom"]])
 # normalize gender data by
 # lower all charcters
-tb.sum_vul[["gender"]] <- tolower(tb.sum_vul[["gender"]])
+volunteer[["gender"]] <- tolower(volunteer[["gender"]])
 # trim whitespaces
-tb.sum_vul[["gender"]] <- trimws(tb.sum_vul[["gender"]])
+volunteer[["gender"]] <- trimws(volunteer[["gender"]])
 # cast all possible options for male and female
-tb.sum_vul[["gender"]] <- ifelse(tb.sum_vul[["gender"]] %in% c("m", "male", "man"), "male", tb.sum_vul[["gender"]])
-tb.sum_vul[["gender"]] <- ifelse(tb.sum_vul[["gender"]] %in% c("woman", "female", "f", "w","fem"), "female", tb.sum_vul[["gender"]])
+volunteer[["gender"]] <- ifelse(volunteer[["gender"]] %in% c("m", "male", "man"), "male", volunteer[["gender"]])
+volunteer[["gender"]] <- ifelse(volunteer[["gender"]] %in% c("woman", "female", "f", "w","fem"), "female", volunteer[["gender"]])
 
 # using a similar approach to the gender we convert the married status now
-tb.sum_vul[["married"]] <- tolower(tb.sum_vul[["married"]])
+volunteer[["married"]] <- tolower(volunteer[["married"]])
 # trim whitespaces
-tb.sum_vul[["married"]] <- trimws(tb.sum_vul[["married"]])
+volunteer[["married"]] <- trimws(volunteer[["married"]])
 # cast all possible options for married/not married
-tb.sum_vul[["married"]] <- ifelse(tb.sum_vul[["married"]] %in% c("married", "yes", "y", "true"), "TRUE", tb.sum_vul[["married"]])
-tb.sum_vul[["married"]] <- ifelse(tb.sum_vul[["married"]] %in% c("no", "not married", "n", "na", "single","false"), "FALSE", tb.sum_vul[["married"]])
+volunteer[["married"]] <- ifelse(volunteer[["married"]] %in% c("married", "yes", "y", "true"), "TRUE", volunteer[["married"]])
+volunteer[["married"]] <- ifelse(volunteer[["married"]] %in% c("no", "not married", "n", "na", "single","false"), "FALSE", volunteer[["married"]])
 
 # using a similar approach to the married column we convert the high_educ status now
-tb.sum_vul[["high_educ"]] <- tolower(tb.sum_vul[["high_educ"]])
+volunteer[["high_educ"]] <- tolower(volunteer[["high_educ"]])
 # trim whitespaces
-tb.sum_vul[["high_educ"]] <- trimws(tb.sum_vul[["high_educ"]])
+volunteer[["high_educ"]] <- trimws(volunteer[["high_educ"]])
 # cast all possible options for high_educ/not high_educ
-tb.sum_vul[["high_educ"]] <- ifelse(tb.sum_vul[["high_educ"]] %in% c("yes", "y"), "TRUE", tb.sum_vul[["high_educ"]])
-tb.sum_vul[["high_educ"]] <- ifelse(tb.sum_vul[["high_educ"]] %in% c("no", "n","false"), "FALSE", tb.sum_vul[["high_educ"]])
+volunteer[["high_educ"]] <- ifelse(volunteer[["high_educ"]] %in% c("yes", "y"), "TRUE", volunteer[["high_educ"]])
+volunteer[["high_educ"]] <- ifelse(volunteer[["high_educ"]] %in% c("no", "n","false"), "FALSE", volunteer[["high_educ"]])
 
 # convert to boolean
-tb.sum_vul[["high_educ"]] <- as.logical(tb.sum_vul[["high_educ"]])
-# Convert to numeric (if appropriate)
-#tb.sum_vul <- as.numeric(tb.sum_vul) 
-```
+volunteer[["high_educ"]] <- as.logical(volunteer[["high_educ"]])
 
-## Cleaning tb.attitude
+# create numerical variable cols for gender and married
+volunteer$gender_num <-as.integer(ifelse(volunteer$gender=="male",0,1))
+volunteer$married_num <-as.integer(ifelse(volunteer$married==FALSE,0,1))
+volunteer$high_educ_num <-as.integer(ifelse(volunteer$high_educ==FALSE,0,1))
+volunteer$children_num <-as.integer(ifelse(volunteer$children==FALSE,0,1))
 
-```{r}
-glimpse(tb.attitude)
-unique(tb.attitude[["exhausting"]])
-unique(tb.attitude[["positive"]])
-unique(tb.attitude[["negative"]])
-```
-
-```{r}
-tb.attitude[["personid"]] = as.integer(tb.attitude[["personid"]])
-# year_week should stay as string as it will be easier to distinct between year and month later on
-# exhausting, negative and postive all contain float values therefore they should not be converted to an integer to avoid information loss
-
-```
-
-## Clean tb.endperiod
-
-```{r}
-glimpse(tb.endperiod)
+# remove duplicates on same personid
+volunteer <- volunteer %>%
+  distinct(personid, .keep_all = TRUE)
 ```
 
 ```{r}
-tb.endperiod[["personid"]] <- as.integer(tb.endperiod[["personid"]])
-tb.endperiod[["promote_switch"]] <- as.logical(as.integer(tb.endperiod[["promote_switch"]]))
-tb.endperiod[["quitjob"]] <- as.logical(as.integer(tb.endperiod[["quitjob"]]))
-tb.endperiod[["costofcommute"]]<- gsub("[^0-9.]", "", tb.endperiod[["costofcommute"]])
-tb.endperiod[["costofcommute"]] <- as.numeric(tb.endperiod[["costofcommute"]])
+# Now we have much better insights using stargazer
+stargazer(as.data.frame(volunteer), type = "text", median = TRUE, header = TRUE)
+```
+
+## Clean attitude
+
+```{r}
+glimpse(attitude)
+stargazer(as.data.frame(attitude), type = "text", median = TRUE, header = TRUE)
+unique(attitude[["exhausting"]])
+unique(attitude[["positive"]])
+unique(attitude[["negative"]])
+```
+
+We see that we do not have missing values, and the data types for all columns already fit. We only need to convert personid to a string.
+
+```{r}
+# convert to integer to remove leading zeros an than to str
+attitude$personid <- as.character(as.integer(attitude$personid))
+# remove duplicates on same personid and year_week
+attitude <- attitude %>%
+  distinct(personid, year_week, .keep_all = TRUE)
+```
+
+## Clean endperiod
+
+```{r}
+glimpse(endperiod)
+stargazer(as.data.frame(endperiod), type = "text", median = TRUE, header = TRUE)
+
+# check character columns with numerical values to extract for non numeric chars to
+# be aware for special cases
+find_non_numeric_chars(endperiod$costofcommute)
+find_non_numeric_rows(endperiod$costofcommute)
+# here we only need to take care of the decimal dots (will be added to the extraction function), any other chars can be ignored
+```
+
+No missing values, promote_switch and quitjob are logical values, though we also will create a numerical version (0-1) for them to compute statistics. costofcommute need to be converted to doubles.
+
+```{r}
+# convert to integer to remove leading zeros an than to str
+endperiod$personid <- as.character(as.integer(endperiod$personid))
+# convert to integers
+endperiod[["promote_switch_num"]] <- as.integer(endperiod[["promote_switch"]])
+endperiod[["quitjob_num"]] <- as.integer(endperiod[["quitjob"]])
+# convert to logical (too have numerical and categorical variables)
+endperiod[["promote_switch"]] <- as.logical(endperiod[["promote_switch_num"]])
+endperiod[["quitjob"]] <- as.logical(endperiod[["quitjob_num"]])
+# extract numbers from string. Both, dots and commas are used as decimal separators
+endperiod[["costofcommute"]]<- gsub("[^0-9.,]", "", endperiod[["costofcommute"]])
+endperiod[["costofcommute"]] <- as.numeric(endperiod[["costofcommute"]])
+# remove duplicates on same personid
+endperiod <- endperiod %>%
+  distinct(personid, .keep_all = TRUE)
+```
+
+```{r}
+glimpse(endperiod)
+stargazer(as.data.frame(endperiod), type = "text", median = TRUE, header = TRUE)
+```
+
+Cost of commute has two missing values, which needs to be considered during analysis.
+
+## Clean performance
+
+```{r}
+glimpse(performance)
+stargazer(as.data.frame(performance), type = "text", median = TRUE, header = TRUE)
+unique(performance[["homethatweek"]])
+
+# check character columns with numerical values to extract for non numeric chars to
+# be aware for special cases
+find_non_numeric_chars(performance$perform1)
+find_non_numeric_rows(performance$perform1)
+find_non_numeric_chars(performance$phonecall)
+find_non_numeric_chars(performance$phonecallraw)
+find_non_numeric_chars(performance$homethatweek)
+find_non_numeric_chars(performance$logphonecall)
+find_non_numeric_chars(performance$logcallpersec)
+find_non_numeric_chars(performance$logcalllength)
+find_non_numeric_chars(performance$logcall_dayworked)
+find_non_numeric_chars(performance$logdaysworked)
+# here we  need to take care of the decimal dots, dashes to negative(negative) and scientifics notion with "e" (will be added to the extraction function)
 
 ```
 
-## Clean tb.perf
+Personid needs to be converted to a string, as well as all all the call and performance measurements need to be converted to doubles. Homethatweek needs to be converted to a logical and numerical
 
 ```{r}
-glimpse(tb.perf)
-#unique(tb.perf[["year_week"]])
-unique(tb.perf[["homethatweek"]])
-```
-
-```{r}
-tb.perf[["personid"]] <- as.integer(tb.perf[["personid"]])
+# convert to integer to remove leading zeros an than to str
+performance$personid <- as.character(as.integer(performance$personid))
 # trim year_week and remove all not nuemerical characters
-tb.perf[["year_week"]] <- trimws(tb.perf[["year_week"]])
-tb.perf[["year_week"]]<- gsub("[^0-9.]", "", tb.perf[["year_week"]])
+performance[["year_week"]] <- trimws(performance[["year_week"]])
+performance[["year_week"]]<- gsub("[^0-9.]", "", performance[["year_week"]])
 # convert to float/doubles
-tb.perf[["perform1"]] <- as.numeric(tb.perf[["perform1"]])
-tb.perf[["phonecall"]] <- as.numeric(tb.perf[["phonecall"]])
+performance[["perform1"]] <- as.numeric(performance[["perform1"]])
+performance[["phonecall"]] <- as.numeric(performance[["phonecall"]])
 # convert to integer
-tb.perf[["phonecallraw"]] <- as.integer(tb.perf[["phonecallraw"]])
+performance[["phonecallraw"]] <- as.integer(performance[["phonecallraw"]])
 # convert to boolean
-tb.perf[["homethatweek"]] <- as.logical(as.integer(tb.perf[["homethatweek"]]))
+performance[["homethatweek_num"]] <- as.integer(performance[["homethatweek"]])
+performance[["homethatweek"]] <- as.logical(performance[["homethatweek_num"]])
 # convert to float/doubles
-tb.perf[["logphonecall"]] <- as.numeric(tb.perf[["logphonecall"]])
-tb.perf[["logcallpersec"]] <- as.numeric(tb.perf[["logcallpersec"]])
-tb.perf[["logcalllength"]] <- as.numeric(tb.perf[["logcalllength"]])
-tb.perf[["logcall_dayworked"]] <- as.numeric(tb.perf[["logcall_dayworked"]])
-tb.perf[["logdaysworked"]] <- as.numeric(tb.perf[["logdaysworked"]])
+performance[["logphonecall"]] <- as.numeric(performance[["logphonecall"]])
+performance[["logcallpersec"]] <- as.numeric(performance[["logcallpersec"]])
+performance[["logcalllength"]] <- as.numeric(performance[["logcalllength"]])
+performance[["logcall_dayworked"]] <- as.numeric(performance[["logcall_dayworked"]])
+performance[["logdaysworked"]] <- as.numeric(performance[["logdaysworked"]])
 # convert to Date
-tb.perf[["date"]] <- as.Date(tb.perf[["date"]])
-```
+performance[["date"]] <- as.Date(performance[["date"]])
 
-## Clean tb.wage
-
-```{r}
-glimpse(tb.wage)
-#unique(tb.wage[["basewage"]])
+# remove duplicates on same personid, year_week
+performance <- performance %>%
+  distinct(personid, year_week, .keep_all = TRUE)
 ```
 
 ```{r}
-tb.wage[["personid"]] <- as.integer(tb.wage[["personid"]])
-tb.wage[["basewage"]] <- as.integer(tb.wage[["basewage"]])
-tb.wage[["grosswage"]] <- as.numeric(tb.wage[["grosswage"]])
-tb.wage[["wage_month"]] <- trimws(tb.wage[["wage_month"]])
-tb.wage[["wage_month"]]<- gsub("[^0-9.]", "", tb.wage[["wage_month"]])
-tb.wage <- rename(tb.wage, year_month=wage_month)
-tb.wage[["bonustotal"]] <- as.numeric(tb.wage[["bonustotal"]])
+glimpse(performance)
+stargazer(as.data.frame(performance), type = "text", median = TRUE, header = TRUE)
+
 ```
+
+Almost all measurements have missing data.
+
+## Clean wage
+
+```{r}
+glimpse(wage)
+stargazer(as.data.frame(wage), type = "text", median = TRUE, header = TRUE)
+# check character columns with numerical values to extract for non numeric chars to
+# be aware for special cases
+find_non_numeric_chars(wage$basewage)
+find_non_numeric_rows(wage$basewage)
+# only trimming needed
+
+```
+
+We have no numerical values yet. basewage, can be converted to integer, gross_wage and bonustotal can be converted to double
+
+```{r}
+# convert to integer to remove leading zeros an than to str
+wage$personid <- as.character(as.integer(wage$personid))
+wage[["basewage"]] <- as.integer(wage[["basewage"]])
+wage[["grosswage"]] <- as.numeric(wage[["grosswage"]])
+wage[["wage_month"]] <- trimws(wage[["wage_month"]])
+wage[["wage_month"]]<- gsub("[^0-9.]", "", wage[["wage_month"]])
+wage <- rename(wage, year_month=wage_month)
+wage[["bonustotal"]] <- as.numeric(wage[["bonustotal"]])
+# remove duplicates on same personid, yearmonth
+wage <- wage %>%
+  distinct(personid, year_month, .keep_all = TRUE)
+```
+
+```{r}
+glimpse(wage)
+stargazer(as.data.frame(wage), type = "text", median = TRUE, header = TRUE)
+```
+
+All columns again contain missing data.
 
 # Merging data together
 
-```{r}
-tb.worker_details <- merge(tb.endperiod, tb.sum_vul, by="personid", all=TRUE)
-tb.perf_attitude <- merge(tb.perf, tb.attitude, by=c("personid", "year_week"))
-tb.perf_attitude <- merge(tb.perf_attitude, tb.worker_details, by=c("personid"))
-```
+## Merging
 
 ```{r}
-tb.perf %>% group_by(personid, year_week) %>% filter(n()>1)
+# First we try to merge all volunteer related data together on personid (unique for a person)
+volunteer_endperiod <- merge(volunteer, endperiod, by="personid", all=TRUE)
+# Second we merge all weekly based data together
+attitude_performance <- merge(attitude, performance, by=c("personid","year_week"), all=TRUE)
+# As wage only has a yearmonth column, we cannot directly merge it with an other table
+# The goal now is to create one big dataframe with all volunteer information, their performance, attitude and how much they have earned. To do so, we need to add the current month the yearweek is in in attitude_performance and merge it with wage. Afterwards with can easily add the volunteer information.
+attitude_performance <- attitude_performance %>%
+  mutate(
+    week_date = ISOweek2date(
+      paste0(substr(year_week,1,4), "-W", substr(year_week,5,6), "-1")
+    ),
+    year_month = format(week_date, "%Y%m")  # gives e.g. "202401", "202412"
+  )
+# merge on year_month
+attitude_performance_wage <- merge(attitude_performance, wage, by=c("personid","year_month"), all.x=TRUE)
+# merge on personid
+volunteer_endperiod_attitude_performance_wage <- merge(attitude_performance_wage, volunteer_endperiod, by="personid")
+
+# lets try to get a dataframe with ALL data and no NAs at all
+distinct_all <- na.omit(volunteer_endperiod_attitude_performance_wage)
 ```
 
+## Analyzing merged dataframes
+
 ```{r}
-tb.attitude %>% group_by(personid, year_week) %>% filter(n()>1)
+stargazer(as.data.frame(volunteer_endperiod), type = "text", median = TRUE, header = TRUE)
+# looks good
+stargazer(as.data.frame(attitude_performance), type = "text", median = TRUE, header = TRUE)
+# when using this dataframe we have to be cautions as attitude has way less columns than and because n(attitude_performance) > n(performance), as a result of the outer-join, both table have combinations of personid, year_weak the otherone does not
+stargazer(as.data.frame(attitude_performance_wage), type = "text", median = TRUE, header = TRUE) 
+stargazer(as.data.frame(volunteer_endperiod_attitude_performance_wage), type = "text", median = TRUE, header = TRUE)
+
+stargazer(as.data.frame(distinct_all), type = "text", median = TRUE, header = TRUE)
 ```
+
+When joing everything together we can see that we do not have all data for each person and its work weeks, what was to be expected. When removing all NAs we can see that the numbers slightly change and for examples all quitters are gone. Therefore we have to use the volunteer_endperiod_attitude_performance_wage with caution and eliminate NAs for each calculation individually. Though this dataframe is handy to use for the further work.
 
 Note: all now resulted dataframes still contain NA values
 
-# Eploration
+# General Analysis
 
-## General correlations
+Get first basic insights of the tables before eliminating null values and merging data together. For a better overview we will look at each table alone, not on the composition table.
 
-In this section we try to get as much information as possible by looking at the data.
+## Statistics
 
-1.  We check for any correlation between any of our numerical value over the performance and attitude of all employees
+### Performance
 
 ```{r}
-# use tb.perf_attitude as df; renaming for better readability
-df <- tb.perf_attitude
-# create.a correlation matrix for the full population
-cor_matrix <- df %>% 
-  correlate(diagonal = 1)
-
-cor_matrix %>%
-  rearrange() %>%            # rearrange by correlations
-  shave() %>%                # Shave off the upper triangle for a clean result
-  fashion(decimals = 3)      # Clean presentation
-
-
-# Correlation plot
-cor_matrix %>% rplot()
+stargazer(as.data.frame(performance), type = "text", median = TRUE, header = TRUE)
 ```
 
-Here we can see that the performance metric "perform1" has a correlation to phonecall, phonecallraw, logphonecall, logcalllength, which gives us a hint on how this metrics was calculated. Furthermore we can see, a light negative correlation between "negative" and "positive" from the attitude dataset, which makes sense as these are opposites. Because of the timeseries data of the performance data set, the light correlation can be explained as the attitude may change from day to day, or not (what we can not infer from that). There is also a slight correlation between exhaustion and negative attitude, which may seem logical at first.
+A lot of missing values, 296 at max, which will fall out from the dataset when working with it.\
+Working from home rate is at 19,64% on average, probably as a result of a Work-from-home-policy.
 
-## Subgroups/Personas of workers
-
-Though we have some correlation between some variables, most of them are not strong/significant, except the performance measurements and score which can be explained because the observational variables are used to calculate the score with a determined function. Therefore, a deeper exploration is needed, which we perform in this exploratory approach by identifying subgroups of all observed workers by dividing them using the categorical variables (7) to create individual groups, where a maximum of 49 are possible. After Identifying the groups we will look at the correlations between all numerical variables within the groups. Doing so, we can identify certain personas for the groups, e.g. high performer, low performer, etc., in order to find more insights on how to solve our clients problems.
-
-### Create groups for the whole dataset of all performances, attitudes for all workers
+### Volunteer
 
 ```{r}
+stargazer(as.data.frame(volunteer), type = "text", median = TRUE, header = TRUE)
+```
+
+No missing values. The average worker is 23,5 years old with a mean commute time of 100 (what?), while there are greater difference, and is for almost 23 (days?) within the company. 15% have children, 20% are married, more than 40% have a higher education. Both, men and women work at the company.
+
+### Endperiod
+
+```{r}
+stargazer(as.data.frame(endperiod), type = "text", median = TRUE, header = TRUE)
+```
+
+On average, a employee had to commute for 10 minutes a day, but this number may heavily differ to some employees, 16% got a promotion, while almost 30% quit their job at some point.
+
+### Wage
+
+```{r}
+stargazer(as.data.frame(wage), type = "text", median = TRUE, header = TRUE)
+```
+
+On average an employee had a base wage of around 1650€ which can slightly differ. A heavily uneven distribution can be seen for the bonuses for employees, while some refer no bonus at all others receive almost 13.000€ as bonus, on average it is 900€ per employee.
+
+### Attitude
+
+```{r}
+stargazer(as.data.frame(attitude), type = "text", median = TRUE, header = TRUE)
+```
+
+### All together 
+
+```{r}
+stargazer(as.data.frame(volunteer_endperiod_attitude_performance_wage), type = "text", median = TRUE, header = TRUE)
+```
+
+Exhaustion scores are mostly low and clustered around 7–9 but some people reach much higher (up to 36), negative scores center near 16 with moderate variation across the group, and positive scores center near 24 with a similar moderate spread, meaning most participants stay within roughly one standard deviation (about ±7 points) of these averages but a few reach the extreme minimum or maximum values
+
+## Linear Regression
+
+```{r}
+nums <- dplyr::select(volunteer_endperiod_attitude_performance_wage, where(is.numeric))
+cm <- cor(nums, use = "pairwise.complete.obs")
+ggcorrplot(cm, lab = FALSE)
+```
+
+Here we can see that the performance metric "perform1" has a correlation to phonecall, phonecallraw, logphonecall, logcalllength, which gives us a hint on how this metrics was calculated. Furthermore we can see, a negative correlation between "negative" and "positive" from the attitude dataset, which makes sense as these are opposites. Because of the timeseries data of the performance data set, the light correlation can be explained as the attitude may change from day to day, or not (what we can not infer from that). There is also a slight correlation between exhaustion and negative attitude, which seems logical. What we cannot see are significant correlations between quit_job and any variable and other than the cluster itself between perfrom1 and any other variable. Quit_job has moderate negative correlations to bonuses/grosswage and promotions.
+
+We cannot see any clear indicators on how to fight churn rate and/or what motivates people to perform better. Therefore we will have a look on different groups of people.
+
+# Detailed exploration analysis
+
+## Quitter vs no-quitters
+
+Lets compare quitter vs non-quitter to better understand both groups:
+
+```{r}
+df <- volunteer_endperiod_attitude_performance_wage
+quitter_df <- df %>% filter(quitjob == TRUE)
+non_quitter_df <- df %>% filter(quitjob == FALSE)
+
+# general impression
+stargazer(as.data.frame(quitter_df), type = "text", median = TRUE, header = TRUE)
+stargazer(as.data.frame(non_quitter_df), type = "text", median = TRUE, header = TRUE)
+stargazer(as.data.frame(df), type = "text", median = TRUE, header = TRUE)
+
+# plot per numeric variable
+ggplot(df, aes(x=quitjob, y=perform1)) + geom_boxplot()
+ggplot(df, aes(x=quitjob, y=tenure)) + geom_boxplot()
+ggplot(df, aes(x=quitjob, y=age)) + geom_boxplot()
+ggplot(df, aes(x=quitjob, y=commute)) + geom_boxplot()
+ggplot(df, aes(x=quitjob, y=costofcommute)) + geom_boxplot()
+ggplot(df, aes(x=quitjob, y=basewage)) + geom_boxplot()
+ggplot(df, aes(x=quitjob, y=bonustotal)) + geom_boxplot()
+ggplot(df, aes(x=quitjob, y=grosswage)) + geom_boxplot()
+
+# Look at correlations
+# subselect variable available in both groups (e.g. attitude data not available for quitters)
+non_quitter_df <- non_quitter_df %>% select(costofcommute,commute,tenure,age,grosswage,basewage,bonustotal,logdaysworked,logcall_dayworked,logcalllength,logcallpersec,logphonecall,phonecallraw,phonecall,perform1, children_num, high_educ_num, married_num, gender_num, homethatweek_num)
+
+quitter_df <- quitter_df %>% select(costofcommute,commute,tenure,age,grosswage,basewage,bonustotal,logdaysworked,logcall_dayworked,logcalllength,logcallpersec,logphonecall,phonecallraw,phonecall,perform1, children_num, high_educ_num, married_num, gender_num, homethatweek_num)
+
+nums <- dplyr::select(quitter_df, where(is.numeric))
+cm <- cor(nums, use = "pairwise.complete.obs")
+ggcorrplot(cm, lab = FALSE)
+
+nums <- dplyr::select(non_quitter_df, where(is.numeric))
+cm <- cor(nums, use = "pairwise.complete.obs")
+ggcorrplot(cm, lab = FALSE)
+```
+
+Generally speaking quitters perform less, work for the company shorter than average, have an average age, have slightly higher costs of commute while commuting about the same in minutes per week, earn less and work not from home in comparison to workers who stay. When begin older, quitters have a higher tendency to have children, being married and have higher education. People who were older and left at some point generally performed better than younger quitters. People who stay, tend to have lower cost of commute and lower commute times (maybe because they commit to working for the company and move closer to it).
+
+We can already get a clue from this comparison of the differences between quitters and non quitters about the group constellation and personas.
+
+## Groups
+
+Lets have a look on all possible combinations of categorical values and which are represented within the volunteer dataset with a threshold of at least 100 people-work-performances per group. We choose this sample size to increase our confidence. Afterwards we will do the same general analysis we did for the whole population for each group.
+
+### Available groups
+
+```{r}
+# make it easier to process
+df <- volunteer_endperiod_attitude_performance_wage
 # define categorical variables
 cat_cols <- c("gender","married","high_educ","bedroom","children","promote_switch","quitjob", "homethatweek")
 
@@ -251,9 +511,6 @@ df <- df %>% mutate(across(all_of(cat_cols), ~ factor(.x)))
 lvls <- lapply(df[cat_cols], levels)
 grid <- tidyr::expand_grid(!!!lvls)
 
-# remove personid as not needed for computations of groups
-df <- df %>% select(-`personid`)
-
 # create summary for each category/group of people working at the company
 summary_df <- df %>%
   group_by(across(all_of(cat_cols))) %>%
@@ -263,159 +520,349 @@ summary_df <- df %>%
     across(where(is.numeric),
            list(mean = ~mean(.x, na.rm = TRUE),
                 sd   = ~sd(.x,   na.rm = TRUE),
+                se = ~sd(.x, na.rm = TRUE) / sqrt(sum(!is.na(.x))),
                 med  = ~median(.x, na.rm = TRUE),
                 min  = ~min(.x, na.rm = TRUE),
                 max  = ~max(.x, na.rm = TRUE)),
-           .names = "{.col}_{.fn}"),
-)
-
+           .names = "{.col}_{.fn}"
+           ),
+    .groups = "drop"
+) %>%
+  mutate(group_index = row_number()) %>% # create an index for each group for bettler handling
+  arrange(desc(n))
+# add group_index to the big d
+group_characteristics <- summary_df %>% select(group_index, gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
+volunteer_endperiod_attitude_performance_wage <- merge(volunteer_endperiod_attitude_performance_wage, group_characteristics, by=c("gender", "married", "bedroom", "children", "high_educ", "promote_switch", "quitjob", "homethatweek"))
+# filter by number of rows per group
+summary_df <- summary_df %>% filter(n>=100) 
 ```
 
-using the summary_df we can get a more detailed glimpse for each group and their statistics to get a better understanding.
+As a result we receive 23 distinct groups out of 8x8=64 possible options where each groups represents a work week of an employee:
 
-### Create correlation matrices for all groups
+### Top 6 groups by number
 
 ```{r}
-# create a funcition for create the correalation matrices as heatmap
-plot_cor_heatmap <- function(.x, title){
-  # "count" how many columns/numerical values we have from the given parameter .x
-  nums <- .x %>% select(where(is.numeric))
-  # where each column (numerical variable) should have at least 2 rows without NAs
-  # keep contains only the col names to keep based on the condition
-  keep <- sapply(nums, function(v) sum(!is.na(v)) > 1)
-  # drop cols which do not meet criteria
-  nums <- nums[, keep, drop = FALSE]
-  # if too few columns or too few rows to compute correlation, just return NULL
-  if (ncol(nums) < 2 || nrow(nums) < 3) return(NULL)
-  
-  # create the acutal matrics based on how many
-  cm <- cor(nums, use = "pairwise.complete.obs")
-  
-  # enforce alphabetical order of variables for consistent axes, to better compare plots later
-  ord <- sort(colnames(cm))
-  cm <- cm[ord, ord]
-  
-  # create correlation plot, hc.order is important to keep our defined order
-  ggcorrplot(cm, hc.order = FALSE, lab = FALSE) +
-    ggtitle(title) +
-    theme(plot.title = element_text(hjust = 0.5, size = 10))
-}
-# use the function and across to dynamically create a matrix for each group we have in cat_cols
-# in the end we will have a list of our grouped worker matrices
-plots <- df %>%
-  group_by(across(all_of(cat_cols))) %>%
-  # for each group create a title and plot the matrix
-  group_map(~{
-    title <- glue::glue_collapse(glue("{names(.y)}={as.character(.y)}"), sep = " | ")
-    plot_cor_heatmap(.x, title)
-  })
-# define the size of the plot
-dev.new(width = 20, height = 8)
-# use wrap_plots to plot (multiple) of the plots
-wrap_plots(plots[1:2])  # show 2 plots at the same time and compare them
-```
+top <- summary_df %>% slice(1:6)
 
-### Save the plots as image files
+total_n <- summary_df %>% summarise(total_n = sum(n))
+top_n <- top %>% summarise(top_n = sum(n))
+
+top_n / total_n # about one quarter of the groups contain over 50% of the total observations
+
+top %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
+
+# 
+```
 
 ```{r}
-# save each plot of the matrix (from ChatGPT)
-library(purrr)
-
-# build file names for each matrix from group variables
-group_names <- df %>%
-  distinct(across(all_of(cat_cols))) %>%
-  mutate(fname = pmap_chr(across(everything()),
-                          ~paste(cat_cols, c(...), sep="=", collapse="_"))) %>%
-  pull(fname)
-
-# match names to plots (plots list comes from previous code)
-valid_idx <- which(!sapply(plots, is.null))
-
-walk(valid_idx, function(i){
-  ggsave(
-    filename = paste0("/Users/max/Documents/Master/Courses/Statistics/Group Project/results/corr_", group_names[i], ".png"),
-    plot     = plots[[i]],
-    width    = 10,
-    height   = 8,
-    dpi      = 300
-  )
-})
+# First we look at the quitters and try to see which are more likely to quit
+ggplot(summary_df, aes(x = factor(group_index), y = quitjob_num_mean)) +
+  geom_boxplot() +
+  labs(x = "Group index", y = "percentage to quit (0-1)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
-## Analyzing the groups and identifying personas associated with them
+Here we can clearly identify groups 7,16,40,48 and 60 where all people quit. Within the rest of the groups nobody quit.
 
-In general we have 23 groups with 7 different worker characteristics (bound to the worker) and one characteristic on if they worked at least once from how in that week of their performance. So the groups describe the performance of week of certain workers based on if they were working from home and their circumstances.
-
-For each group we will describe what the correlations implies for the group and compare them to each other.
-
-### Group 1:
-
-Male, unemployed employees with low education, with no access to the bedroom in the office, no promote options who not quit, who have not worked from home during that week:\
+### Analyze quitter groups
 
 ```{r}
-wrap_plots(plots[1])
+df <- volunteer_endperiod_attitude_performance_wage
 ```
 
-**Conclusions**
+#### Group 7
 
-1.  Call-volume metrics (raw counts, logs, calls per day, call length) cluster tightly, indicating they reflect the same workload.
+357 observations of 6 volunteer
 
-2.  Higher workload links to higher exhaustion and more negative mood.
+**Persona observations:**\
+female\
+not married\
+number of bedrooms: 1\
+no children\
+no high education\
+no promotion\
+worked for 7.6 months at the company when left (\< avg)\
+20.5 years old (\< avg)\
+\
+**Other average weekly observations:**\
+not working from home\
+performed -0.308 (\< avg)\
+basewage per month: 1453 (\< avg)\
+bonus per month: 831 (\<\< avg)\
+grosswage per month: 2265 (\< avg)\
+cost of commute per month: 4 (\< avg)\
+commute minutes per week: 103 (\<avg)\
+logdaysworked: 1.6 (\~= avg)
 
-3.  Positive mood decreases with rising exhaustion and workload.
+This groups shows a very similar correlation matrix in comparison to the overall sample, no specialities.
 
-4.  Faster call rate (calls per second) comes with shorter call length.
+*Interpretation*\
+Looks like a group of female juniors (wage, performance, tenure, age), living not close by, probably the first or second job after high school(?) or even a job for a gap year. Probably left because of pursuing with school or another job for a pay increase.
 
-This supports the idea that heavier work increases fatigue and worsens mood, while efficiency trades off with call duration.
+*Recommendation*
 
-Furthermore we see clusters for the performance metrics, showing a very similar view as the general impression from the beginning.
-
-### Group 2:
-
-Male, unemployed employees with low education, with no access to the bedroom in the office, no promote options who not quit, who have worked from home during that week:
+This group is amoung the youngest and has a worse performance than the average. Offering working from home/remote working capabilities can be a recommended, as these group could for example continue working during university or traveling. When performance increases a raise would be appropiate but now as first action.
 
 ```{r}
-wrap_plots(plots[2])
+# select group data
+group7 <- df %>% filter(group_index==7)
+stargazer(as.data.frame(group7), type = "text", median = TRUE, header = TRUE)
+# group definition
+group7 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
+# distinct persons
+unique(group7 %>%select(personid))
+
+nums <- dplyr::select(group7, where(is.numeric))
+cm <- cor(nums, use = "pairwise.complete.obs")
+ggcorrplot(cm, lab = FALSE)
 ```
 
-**Conclusions**
+#### Group 16
 
-The pattern matches the previous group: call-volume indicators remain tightly linked to each other and to exhaustion and negative mood. Positive mood still drops as workload rises. Logcallpersec again trades off with call length. No major structural shift is visible compared to the earlier matrix.
+338 observations for 6 volunteers
 
-There, for this type of individuals, working from home does not make a significant difference.
+**Persona observations:**\
+female\
+not married\
+number of bedrooms: 1\
+no children\
+high education\
+no promotion\
+worked for 23.5 months at the company when left (= avg)\
+23.7 years old (\>= avg)\
+\
+**Other average weekly observations:**\
+not working from home\
+performed: 0 (= avg)\
+basewage per month: 1598 (\< avg)\
+bonus per month: 1362 (\< avg)\
+grosswage per month: 2940 (\<=avg)\
+cost of commute per month: 3.9 (\< avg)\
+commute min per week: 52 (\<\< avg)\
+logdaysworked: 1.65 (\~= avg)
 
-### Group 3:
+For this group the strong positive correlation between tenure and age stands out. For the full sample it is slightly negative. Commute and age have a much stronger negative corrleation
 
-Male, unemployed employees with low education, with access to the bedroom in the office, no promote options who not quit, who have not worked from home during that week:
+*Interpretation*\
+Looks like a group of female juniors (wage, performance, tenure, age), who already worked for almost 2 years, living somewhat central, probably the first or second job college. Decent performance, not a top performer but average. Probably left because they did not receive a promotion and went for a higher paying job as their salary was still below average.
+
+*Recommendation*\
+As this group has an average performance while still being young, and already has a higher education degree (so they probably wont leave for education) our client should prioritize this group and try to give employees in this group a raise and a promotion to keep them within the company. Additionally offer working from home as a benifit, though is not the greatest leverage for this group.
 
 ```{r}
-wrap_plots(plots[3])
+# select group data
+group16 <- df %>% filter(group_index==16)
+stargazer(as.data.frame(group16), type = "text", median = TRUE, header = TRUE)
+# group definition
+group16 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
+# distinct persons
+unique(group16 %>%select(personid))
+
+nums <- dplyr::select(group16, where(is.numeric))
+cm <- cor(nums, use = "pairwise.complete.obs")
+ggcorrplot(cm, lab = FALSE)
 ```
 
-**Conclusions**
+#### Group 40
 
-The core performance cluster (phonecall measures, performance, exhaustion, negative mood) remains strong.
+643 observations for 12 volunteers
 
-New: • Age tracks tenure and commuting cost, suggesting older employees stay longer and spend more on commuting. • Commute and cost are strongly linked as expected. • Positive mood still drops with higher workload and exhaustion. The structure is otherwise similar to earlier groups.Results
+**Persona observations:**\
+male\
+not married\
+number of bedrooms: 1\
+no children\
+no high education\
+no promotion\
+worked for 26.8 months at the company when left (= avg)\
+22.8 years old (\<= avg)\
+\
+**Other average weekly observations:**\
+not working from home\
+performed: -0.46 (\<\< avg)\
+basewage per month: 1492 (\< avg)\
+bonus per month: 1149 (\< avg)\
+grosswage per month: 2604 (\<=avg)\
+cost of commute per month: 8.3 (\> avg)\
+commute min per week: 119 (\<\< avg)\
+logdaysworked: 1.7 (\~= avg)
 
-### Group 4:
+This correlation matrix is again very similar to the full sample matrix, no outstanding differences.
 
-Male, unemployed employees with low education, with access to the bedroom in the office, no promote options who not quit, who have not worked from home during that week:
+*Interpretation*\
+Young male group, with no high education and family, which has never worked from home. Heavily underperformed, while working as many days as the average. Lives somewhat far away (over avg) with avg cost for commuting. Earns about 400 less than avereag despite the bad performance. Group7 had similar circumstances, despite commute, but a much better performance with lower salary. But the group is twice as big as this group.
+
+*Recommendation*
+
+As the performance is worse than average, trying to keep this group of workers should not be prioritized.
 
 ```{r}
-wrap_plots(plots[4])
+# select group data
+group40 <- df %>% filter(group_index==40)
+stargazer(as.data.frame(group40), type = "text", median = TRUE, header = TRUE)
+# group definition
+group40 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
+# distinct persons
+unique(group40 %>%select(personid))
+
+nums <- dplyr::select(group40, where(is.numeric))
+cm <- cor(nums, use = "pairwise.complete.obs")
+ggcorrplot(cm, lab = FALSE)
 ```
 
-**Conclusions**
+#### Group 48
 
-The same core workload cluster (phonecall measures, performance, exhaustion, negative mood) persists.\
+218 observations for 4 volunteers
 
-New demographics show:\
+**Persona observations:**\
+male\
+not married\
+number of bedrooms: 1\
+no children\
+high education\
+no promotion\
+worked for 15.4 months at the company when left (= avg)\
+21.8 years old (\<= avg)\
+\
+**Other average weekly observations:**\
+not working from home\
+performed: -0.612 (\<\< avg)\
+basewage per month: 1566 (\< avg)\
+bonus per month: 1087 (\< avg)\
+grosswage per month: 2627 (\<=avg)\
+cost of commute per month: 9.5 (\> avg)\
+commute min per week: 33.4 (\<\< avg)\
+logdaysworked: 1.7 (\~= avg)
 
-• Age strongly raises commuting cost and distance.\
+We can see a strong correlation between costofcommute, tenure and age and a rather negative one between costofcommute, commute, tenure, age and grosswage/bonustotal. But small sample size (less confidence).
 
-• Commute and cost remain tightly linked.\
+*Interpretation*\
+Young male group, with no education and no family, which has never worked from home. Heavily underperformed, even more than males with high education who quit, while working as many days as the average. Lives closer to work than the average with slightly higher than avg cost for commuting. Earns about 400 less than average despite the bad performance. Unclear why they left, probably also because they wanted more money/a promotion.
 
-• Positive mood again falls with higher workload and exhaustion.\
+*Recommendation*
 
-Compared to the previous male subgroup, age is now more tied to commute cost but tenure links to age are weaker.
+Because of the small sample size confidence is low. Tough, as the performance is bad, trying to keep this group of workers should not be prioritized. The company has to ask itself if it is willing to pay more money for this performance,
+
+```{r}
+# select group data
+group48 <- df %>% filter(group_index==48)
+stargazer(as.data.frame(group48), type = "text", median = TRUE, header = TRUE)
+# group definition
+group48 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
+# distinct persons
+unique(group48 %>%select(personid))
+
+nums <- dplyr::select(group48, where(is.numeric))
+cm <- cor(nums, use = "pairwise.complete.obs")
+ggcorrplot(cm, lab = FALSE)
+```
+
+#### Group 60
+
+202 observations for 4 volunteers
+
+**Persona observations:**\
+male\
+married\
+number of bedrooms: 1\
+children\
+high education\
+no promotion\
+worked for 22 months at the company when left (\> avg)\
+27.8 years old (\> avg)\
+\
+**Other average weekly observations:**\
+not working from home\
+performed: -0.22 (\< avg)\
+basewage per month: 1555 (\< avg)\
+bonus per month: 1256 (\< avg)\
+grosswage per month: 2784 (\<=avg)\
+cost of commute per month: 20.5 (\>\> avg)\
+commute min per week: 101.5 (= avg)\
+logdaysworked: 1.5 (\<= avg)
+
+We can see a strong correlation age, tenure and commute. And a moderate between tenure, bonustotal, grosswage, basewage (steady salary raises(?) But small sample size (less confidence).
+
+*Interpretation*\
+Older than avg. male group, with high education and family, which has never worked from home. Underperformance a bit, while working as a little less days as the average. Earn about the same amount less than what they perform less. High cost of commute and average commute minutes per week. Probably left because of this, and maybe the performance also was affect by that. As the salary was steadily improved while working their, this was probably not the main reason.
+
+*Recommendation*
+
+Because of the small sample size confidence is low. Tough, as the performance is probably worse because of the high commute cost in combination with having a family. A first important action can be the offering of working from home to reduce negative aspects of commuting and increasing performance. If performance actually rises, salary should be increased as well according to that.
+
+```{r}
+# select group data
+group60 <- df %>% filter(group_index==60)
+stargazer(as.data.frame(group60), type = "text", median = TRUE, header = TRUE)
+# group definition
+group60 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
+# distinct persons
+unique(group60 %>%select(personid))
+
+nums <- dplyr::select(group60, where(is.numeric))
+cm <- cor(nums, use = "pairwise.complete.obs")
+ggcorrplot(cm, lab = FALSE)
+```
+
+## Top performing 10%
+
+### Select
+
+```{r}
+df <- volunteer_endperiod_attitude_performance_wage
+
+#df <- na.omit(df$perform1)
+
+# define threshold
+threshold <- quantile(df$perform1, 0.9, na.rm = TRUE)
+
+# select data
+df <- df %>%
+  mutate(isTop10 = if_else(perform1 >= threshold, TRUE, FALSE)) %>% filter(!is.na(isTop10))
+
+top10 <- df %>% filter(isTop10 == TRUE)
+bottom90 <- df %>% filter(isTop10 == FALSE)
+```
+
+### Compare
+
+Here we use the same approach as for the quitters:
+
+```{r}
+# compare general statistics
+stargazer(as.data.frame(top10), type = "text", median = TRUE, header = TRUE)
+stargazer(as.data.frame(bottom90), type = "text", median = TRUE, header = TRUE)
+
+# compare distributions
+ggplot(df, aes(x=isTop10, y=perform1)) + geom_boxplot()
+ggplot(df, aes(x=isTop10, y=tenure)) + geom_boxplot()
+ggplot(df, aes(x=isTop10, y=age)) + geom_boxplot()
+ggplot(df, aes(x=isTop10, y=commute)) + geom_boxplot()
+ggplot(df, aes(x=isTop10, y=costofcommute)) + geom_boxplot()
+ggplot(df, aes(x=isTop10, y=basewage)) + geom_boxplot()
+ggplot(df, aes(x=isTop10, y=bonustotal)) + geom_boxplot()
+ggplot(df, aes(x=isTop10, y=grosswage)) + geom_boxplot()
+
+# create correlation matrices
+nums <- dplyr::select(top10, where(is.numeric))
+cm <- cor(nums, use = "pairwise.complete.obs")
+ggcorrplot(cm, lab = FALSE)
+
+nums <- dplyr::select(bottom90, where(is.numeric))
+cm <- cor(nums, use = "pairwise.complete.obs")
+ggcorrplot(cm, lab = FALSE)
+```
+
+The average employee among the top 10% performing ones, has no children, though it is more likely than for the other 90%, works 25% oft the time from home, is almost 24 years old, works for 32 months at the company and an average commute and average cost of commute. Almost 22% receive a promotion, whereas 17.7% of lower performing people receive one. They earn over the average by bonuses, but have a average base salary. Though some not high performing individuals receive enormous bonuses. Only 18% high performing people quit while 25% quit from the other 90%.
+
+Top performer are less likely to quit when receiving a higher bonus than non performer, but more likely if they have a long commute as this is negatively correlative with their negative attitude. Working from home does not affect performance of both groups. Working from home increases positivity while lowering negativity and exhaustion for the top performer.
+
+*Recommendations*
+
+-   Bonuses combined with goals/milestones to motivate people and increase performance, but only if you reach them
+
+-   check existing bonuses for not high performing people and reevaluate if that is fair, this might be a motivation killer
+
+-   offer more working from home for high performer, as it does not affect their performance and rather increases positivity
+
+# Hypothesis testing
