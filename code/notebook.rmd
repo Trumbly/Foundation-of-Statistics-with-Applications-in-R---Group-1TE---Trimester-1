@@ -1,6 +1,6 @@
 ---
 title: "Group Assignment Trimester 1 25/26"
-output: pdf
+output: github_document
 date: "2025-09-16"
 ---
 
@@ -251,7 +251,7 @@ unique(performance[["homethatweek"]])
 # check character columns with numerical values to extract for non numeric chars to
 # be aware for special cases
 find_non_numeric_chars(performance$perform1)
-find_non_numeric_rows(performance$perform1)
+#find_non_numeric_rows(performance$perform1)
 find_non_numeric_chars(performance$phonecall)
 find_non_numeric_chars(performance$phonecallraw)
 find_non_numeric_chars(performance$homethatweek)
@@ -608,7 +608,7 @@ This group is amoung the youngest and has a worse performance than the average. 
 group7 <- df %>% filter(group_index==7)
 stargazer(as.data.frame(group7), type = "text", median = TRUE, header = TRUE)
 # group definition
-group7 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
+#group7 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
 # distinct persons
 unique(group7 %>%select(personid))
 
@@ -654,7 +654,7 @@ As this group has an average performance while still being young, and already ha
 group16 <- df %>% filter(group_index==16)
 stargazer(as.data.frame(group16), type = "text", median = TRUE, header = TRUE)
 # group definition
-group16 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
+#group16 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
 # distinct persons
 unique(group16 %>%select(personid))
 
@@ -701,7 +701,7 @@ As the performance is worse than average, trying to keep this group of workers s
 group40 <- df %>% filter(group_index==40)
 stargazer(as.data.frame(group40), type = "text", median = TRUE, header = TRUE)
 # group definition
-group40 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
+#group40 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
 # distinct persons
 unique(group40 %>%select(personid))
 
@@ -748,7 +748,7 @@ Because of the small sample size confidence is low. Tough, as the performance is
 group48 <- df %>% filter(group_index==48)
 stargazer(as.data.frame(group48), type = "text", median = TRUE, header = TRUE)
 # group definition
-group48 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
+#group48 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
 # distinct persons
 unique(group48 %>%select(personid))
 
@@ -795,7 +795,7 @@ Because of the small sample size confidence is low. Tough, as the performance is
 group60 <- df %>% filter(group_index==60)
 stargazer(as.data.frame(group60), type = "text", median = TRUE, header = TRUE)
 # group definition
-group60 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
+#group60 %>% select(gender, married, bedroom, children, high_educ, promote_switch, quitjob, homethatweek)
 # distinct persons
 unique(group60 %>%select(personid))
 
