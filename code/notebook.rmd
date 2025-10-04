@@ -4,26 +4,31 @@ output: github_document
 date: "2025-09-16"
 ---
 
+# Task
+
+## Description
+
 You are a consultant for Pacific Insights Analytics (PIA), a boutique data analytics firm specializing in workforce performance. PIA has been hired by Huaxia Communications, a major Chinese company operating several large call centers across the country. Huaxia is facing rising operational challenges. Staff attrition is driving up recruitment and training costs and retaining top performers is becoming increasingly difficult. To address these issues, Huaxia has provided you with historical data from one of its call centers. This data comes from multiple administrative sources, including worker surveys, HR records, and call center productivity logs. Because the data was collected from different systems, it contains inconsistencies, formatting problems, and other quality issues. Your task is to clean, explore, and analyze the data in order to generate clear, evidence-based recommendations that can help Huaxia’s management improve retention and boost productivity. Important: You should not run any regression models. The goal is to understand the data and identify patterns that can inform management decisions through EDA and hypothesis testing.
+
+## **Declaration of AI Usage**
+
+In the preparation of this project, I made use of AI tools, specifically OpenAI’s ChatGPT, as a support resource. The tool was employed to enhance efficiency in tasks such as structuring ideas, clarifying concepts, refining wording, and checking technical accuracy.
+
+At all times, the use of AI served as a complement to my own knowledge, analysis, and critical thinking. The outputs generated were carefully reviewed, adapted, and integrated by us to ensure originality, accuracy, and academic integrity. The final work reflects my own understanding, reasoning, and skills, with AI functioning only as a leverage of these.
+
+# Setup
 
 ## Packages
 
 ```{r}
 library(tidyverse)
 library(haven)
-library(corrr)
-library(purrr)
-library(glue)
 library(dplyr)
-library(tidyr)
 library(ggplot2)
 library(ggcorrplot)
-library(glue)
-library(patchwork)
-library(lubridate)
 library(ISOweek)
-library(skimr)
 library(stargazer)
+library(fmsb)
 ```
 
 ## Loading the data
@@ -35,12 +40,14 @@ data_endperiod <- read_dta("../data/endperiod_outcomes_labeled.dta")
 data_sum_vol <- read_dta("../data/summary_volunteer_labeled.dta")
 data_wage_new <- read_dta("../data/wage_new_labeled.dta")
 
+# convert to tibbles
 performance <- as_tibble(data_perf)
 attitude <- as_tibble(data_attitude)
 endperiod <- as_tibble(data_endperiod)
 volunteer <- as_tibble(data_sum_vol)
 wage <- as_tibble(data_wage_new)
 
+# remove raw data
 rm(data_perf)
 rm(data_attitude)
 rm(data_endperiod)
@@ -50,11 +57,12 @@ rm(data_wage_new)
 
 # Cleaning data
 
+## Some handy functions for cleaning
+
 Here come some handy functions to reduce duplicate code for cleaning the data:
 
-Extract a numeric number from a string with different decimal separators:
-
 ```{r}
+# Extract a numeric values correctly from a string value, considering multiple cases
 extract_numeric <- function(x) {
   # remove leading/trailing spaces
   x <- trimws(x)
@@ -89,11 +97,12 @@ extract_numeric <- function(x) {
   as.numeric(x)
 }
 
+# find all non numeric characters in a string and return them
 find_non_numeric_chars <- function(x) {
   non_numeric <- gsub("[-0-9]", "", x)  # remove digits, minus, dot, comma
   unique(non_numeric[non_numeric != ""])
 }
-
+# find all rows with non numeric characters in a string and return them
 find_non_numeric_rows <- function(x) {
   non_numeric <- !grepl("^[-]?[0-9]+([0-9]+)?$",x) # remove digits, minus, dot, comma
   non_numeric <- non_numeric[non_numeric != ""]
@@ -103,7 +112,7 @@ find_non_numeric_rows <- function(x) {
 
 ## Clean volunteer
 
-```{r, echo=FALSE, results='asis'}
+```{r}
 glimpse(volunteer)
 stargazer(as.data.frame(volunteer), type = "text", median = TRUE, header = FALSE)
 
@@ -114,7 +123,7 @@ find_non_numeric_rows(volunteer$commute)
 # here we only need to take care of the decimal dots (will be added to the extraction function)
 ```
 
-We can see a lot of columns with numerical values within strstrings and additional chars. Furthermore, categorical variables like married and gender contain different labels for the same categories.
+We can see a lot of columns with numerical values within strings and additional chars. Furthermore, categorical variables like married and gender contain different labels for the same categories.
 
 ```{r}
 # convert to integer to remove leading zeros an than to str
@@ -187,6 +196,7 @@ stargazer(as.data.frame(volunteer), type = "text", median = TRUE, header = TRUE)
 ```{r}
 glimpse(attitude)
 stargazer(as.data.frame(attitude), type = "text", median = TRUE, header = TRUE)
+# checking unique values to decide int vs dbl
 unique(attitude[["exhausting"]])
 unique(attitude[["positive"]])
 unique(attitude[["negative"]])
@@ -336,19 +346,37 @@ glimpse(wage)
 stargazer(as.data.frame(wage), type = "text", median = TRUE, header = TRUE)
 ```
 
-All columns again contain missing data.
+All columns again contain missing data. Grosswage is not the sum of basewage+bonustotal all the time:\
+Cases:
+
+-   NA in bonus: –\> 0
+
+-   NA in basewage: remove row
+
+-   Grosswage != bonuswage+basewage: recalculate
+
+```{r}
+# case 1
+wage <- wage %>% mutate(bonustotal = ifelse(is.na(bonustotal),0,bonustotal))
+
+# case 2
+wage <- wage %>% filter(!is.na(basewage))
+
+# case 3
+wage <- wage %>% mutate(grosswage = ifelse(grosswage != bonustotal+basewage, bonustotal+basewage, grosswage))
+```
 
 # Merging data together
 
 ## Merging
 
 ```{r}
-# First we try to merge all volunteer related data together on personid (unique for a person)
+# First we merge all volunteer related data together on personid (unique for a person)
 volunteer_endperiod <- merge(volunteer, endperiod, by="personid", all=TRUE)
-# Second we merge all weekly based data together
+# Second we merge all weekly based timeseries data together per personid
 attitude_performance <- merge(attitude, performance, by=c("personid","year_week"), all=TRUE)
-# As wage only has a yearmonth column, we cannot directly merge it with an other table
-# The goal now is to create one big dataframe with all volunteer information, their performance, attitude and how much they have earned. To do so, we need to add the current month the yearweek is in in attitude_performance and merge it with wage. Afterwards with can easily add the volunteer information.
+# As wage only has a yearmonth column, we cannot directly merge it with an other table containing timeseries data
+# The goal now is to create one big dataframe with all volunteer information, their performance, attitude and how much they have earned in a month. To do so, we need to add the current month the yearweek is in in attitude_performance and merge it with wage. Afterwards with can easily add the volunteer information.
 attitude_performance <- attitude_performance %>%
   mutate(
     week_date = ISOweek2date(
@@ -371,18 +399,32 @@ distinct_all <- na.omit(volunteer_endperiod_attitude_performance_wage)
 stargazer(as.data.frame(volunteer_endperiod), type = "text", median = TRUE, header = TRUE)
 # looks good
 stargazer(as.data.frame(attitude_performance), type = "text", median = TRUE, header = TRUE)
-# when using this dataframe we have to be cautions as attitude has way less columns than and because n(attitude_performance) > n(performance), as a result of the outer-join, both table have combinations of personid, year_weak the otherone does not
+# when using this dataframe we have to be cautions as attitude has way less columns than attitude n(attitude_performance) > n(performance), as a result of the outer-join, both table have combinations of personid, year_weak the otherone does not
 stargazer(as.data.frame(attitude_performance_wage), type = "text", median = TRUE, header = TRUE) 
 stargazer(as.data.frame(volunteer_endperiod_attitude_performance_wage), type = "text", median = TRUE, header = TRUE)
 
 stargazer(as.data.frame(distinct_all), type = "text", median = TRUE, header = TRUE)
 ```
 
-When joing everything together we can see that we do not have all data for each person and its work weeks, what was to be expected. When removing all NAs we can see that the numbers slightly change and for examples all quitters are gone. Therefore we have to use the volunteer_endperiod_attitude_performance_wage with caution and eliminate NAs for each calculation individually. Though this dataframe is handy to use for the further work.
+When joining everything together we can see that we do not have all data for each person and its work weeks, what was to be expected. When removing all NAs we can see that the numbers slightly change and for examples all quitters are gone. Therefore we have to use the volunteer_endperiod_attitude_performance_wage with caution and eliminate NAs for each calculation individually. Though this dataframe is handy to use for the further work.
 
-Note: all now resulted dataframes still contain NA values
+volunteer_enperiod: Cross sectional data of all employee related information.
+
+attitude_performance: Panel data on how an employee performed in a certain week of the year and how he/she felt.
+
+attitude_performance_wage: Panel data on how an employee performed in a certain week of the year, how he/she felt in that week and their wage during that month. Caution: contains two different time series.
+
+volunteer_endperiod_attitude_performance_wage: Like attitude_performance_wage, but with volunteer_endperod data.
 
 # General Analysis
+
+Population: All employees of Huaxia\
+Our sample: Depending on the table we use and what we collect the unit of interest might differ:\
+Attitude, performance (time series): weekly observations of a person\
+volunteer (cross sectional): the person itself\
+wage (time series): the wage of a person in a month\
+endperiod (cross sectional): behavior of a person(?)\
+volunteer_endperiod_attitude_performance_wage(panel data): repeated observations of different employees across multiple time periods, combining attitudes performance, volunteer, endperiod, and wages
 
 Get first basic insights of the tables before eliminating null values and merging data together. For a better overview we will look at each table alone, not on the composition table.
 
@@ -392,9 +434,50 @@ Get first basic insights of the tables before eliminating null values and mergin
 
 ```{r}
 stargazer(as.data.frame(performance), type = "text", median = TRUE, header = TRUE)
+
+# perform plot
+stats <- performance %>% summarise(
+  min  = min(perform1, na.rm = TRUE),
+  max  = max(perform1, na.rm = TRUE),
+  mean = mean(perform1, na.rm = TRUE),
+  median = median(perform1, na.rm = TRUE),
+  sd   = sd(perform1, na.rm = TRUE)
+)
+
+p<-ggplot(performance, aes(y = perform1)) +
+  geom_boxplot(
+    outlier.alpha = 0.6,
+    outlier.size = 1.8,
+    fill = "#9df3c4",
+    color = "#0d0c3f"
+  ) +
+  labs(y = "Performance Score", title = "Distribution of performances per week of employees") +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+      axis.text.x  = element_blank(),
+      axis.ticks.x = element_blank()) 
+
+# add annotations
+p + annotate("text", x = 0.27, y = 4, 
+           label = paste0("SD: ", round(stats$sd,2)), 
+           hjust = 0, color = "#0d0c3f")+
+  annotate("text", x = 0.27, y = 3.6, 
+           label = paste0("Mean: ", round(stats$mean,2)), 
+           hjust = 0, color = "#0d0c3f")+
+  annotate("text", x = 0.27, y = 3.2, 
+           label = paste0("Median: ", round(stats$median,2)), 
+           hjust = 0, color = "#0d0c3f") +
+  annotate("text", x = 0.27, y = 2.8, 
+           label = paste0("Min: ", round(stats$min,2)), 
+           hjust = 0, color = "#0d0c3f") +
+  annotate("text", x = 0.27, y = 2.4, 
+           label = paste0("Max: ", round(stats$max,2)), 
+           hjust = 0, color = "#0d0c3f") 
+
+ggsave("performance_distribution.png", width = 7, height = 5, dpi = 300)
 ```
 
-A lot of missing values, 296 at max, which will fall out from the dataset when working with it.\
+A lot of missing values, 296 at max, which will fall out from the data set when working with it.\
 Working from home rate is at 19,64% on average, probably as a result of a Work-from-home-policy.
 
 ### Volunteer
@@ -403,7 +486,7 @@ Working from home rate is at 19,64% on average, probably as a result of a Work-f
 stargazer(as.data.frame(volunteer), type = "text", median = TRUE, header = TRUE)
 ```
 
-No missing values. The average worker is 23,5 years old with a mean commute time of 100 (what?), while there are greater difference, and is for almost 23 (days?) within the company. 15% have children, 20% are married, more than 40% have a higher education. Both, men and women work at the company.
+No missing values. The average worker is 23,5 years old with a mean commute time of 100 minutes per week while there are greater differences, and is for almost 23 months within the company. 15% have children, 20% are married, more than 40% have a higher education. Both, men and women work at the company.
 
 ### Endperiod
 
@@ -411,12 +494,50 @@ No missing values. The average worker is 23,5 years old with a mean commute time
 stargazer(as.data.frame(endperiod), type = "text", median = TRUE, header = TRUE)
 ```
 
-On average, a employee had to commute for 10 minutes a day, but this number may heavily differ to some employees, 16% got a promotion, while almost 30% quit their job at some point.
+On average, an employee had cost of commute of 7.5 but this number may heavily differ to some employees, 16% got a promotion, while almost 30% quit their job at some point.
 
 ### Wage
 
 ```{r}
 stargazer(as.data.frame(wage), type = "text", median = TRUE, header = TRUE)
+
+
+stats <- wage %>% summarise(
+  min  = min(grosswage, na.rm = TRUE),
+  max  = max(grosswage, na.rm = TRUE),
+  mean = mean(grosswage, na.rm = TRUE),
+  median = median(grosswage, na.rm = TRUE),
+  sd   = sd(grosswage, na.rm = TRUE)
+)
+
+p <- ggplot(wage, aes(y = grosswage)) +
+  geom_boxplot(
+    outlier.alpha = 0.6,
+    outlier.size = 1.8,
+    fill = "#9df3c4",
+    color = "#0d0c3f"
+  ) +
+  labs(y = "€ per month", title = "Distribution of Gross Wages") +
+  theme_minimal()
+
+# add annotations
+p + annotate("text", x = 0.27, y = 14000, 
+           label = paste0("SD: ", round(stats$sd,0), "€"), 
+           hjust = 0, color = "#0d0c3f")+
+  annotate("text", x = 0.27, y = 13000, 
+           label = paste0("Mean: ", round(stats$mean,0), "€"), 
+           hjust = 0, color = "#0d0c3f")+
+  annotate("text", x = 0.27, y = 12000, 
+           label = paste0("Median: ", round(stats$median,0), "€"), 
+           hjust = 0, color = "#0d0c3f") +
+  annotate("text", x = 0.27, y = 11000, 
+           label = paste0("Min: ", round(stats$min,0), "€"), 
+           hjust = 0, color = "#0d0c3f") +
+  annotate("text", x = 0.27, y = 10000, 
+           label = paste0("Max: ", round(stats$max,0), "€"), 
+           hjust = 0, color = "#0d0c3f") 
+
+ggsave("gross_wage_distribution.png", width = 7, height = 5, dpi = 300)
 ```
 
 On average an employee had a base wage of around 1650€ which can slightly differ. A heavily uneven distribution can be seen for the bonuses for employees, while some refer no bonus at all others receive almost 13.000€ as bonus, on average it is 900€ per employee.
@@ -427,13 +548,117 @@ On average an employee had a base wage of around 1650€ which can slightly diff
 stargazer(as.data.frame(attitude), type = "text", median = TRUE, header = TRUE)
 ```
 
-### All together 
+Exhaustion scores are mostly low and clustered around 7–9 but some people reach much higher (up to 36), negative scores center near 16 with moderate variation across the group, and positive scores center near 24 with a similar moderate spread, meaning most participants stay within roughly one standard deviation (about ±7 points) of these averages but a few reach the extreme minimum or maximum values
+
+### All together
 
 ```{r}
 stargazer(as.data.frame(volunteer_endperiod_attitude_performance_wage), type = "text", median = TRUE, header = TRUE)
-```
 
-Exhaustion scores are mostly low and clustered around 7–9 but some people reach much higher (up to 36), negative scores center near 16 with moderate variation across the group, and positive scores center near 24 with a similar moderate spread, meaning most participants stay within roughly one standard deviation (about ±7 points) of these averages but a few reach the extreme minimum or maximum values
+df <- volunteer_endperiod_attitude_performance_wage
+df <- dplyr::select(df, where(is.numeric))
+
+# create a summary df as preparation for the radar plot rendering
+create_summary <- function(df, drop_all_na = TRUE, keep_group_index = TRUE) {
+  num <- df %>%
+    select(where(is.numeric)) %>%
+    mutate(across(everything(), ~ ifelse(is.finite(.x), .x, NA_real_)))
+
+  if (drop_all_na) {
+    keep <- vapply(num, function(x) any(!is.na(x)), logical(1))
+    num <- num[, keep, drop = FALSE]
+  }
+  stopifnot(ncol(num) > 0)
+
+  summary <- num %>%
+    summarise(
+      across(everything(),
+         list(mean = ~mean(.x, na.rm = TRUE),
+              min  = ~min(.x,  na.rm = TRUE),
+              max  = ~max(.x,  na.rm = TRUE)),
+         .names = "{.col}_{.fn}"))
+  summary
+}
+
+
+
+# Expects a dataframe with *_min, *_max, *_mean columns
+render_radar_plot <- function (df, pad = 1e-6) {
+  # separate min, max, mean
+  max_vals <- df %>% select(ends_with("_max")) %>% rename_with(~ sub("_max$", "", .x))
+  min_vals <- df %>% select(ends_with("_min")) %>% rename_with(~ sub("_min$", "", .x))
+  mean_vals <- df %>% select(ends_with("_mean")) %>% rename_with(~ sub("_mean$", "", .x))
+  
+  # avoid zero-range axes (min == max) that break fmsb scaling
+  rng <- as.numeric(max_vals[1, ] - min_vals[1, ])
+  z   <- which(is.na(rng) | rng == 0)
+  if (length(z)) {
+    max_vals[1, z] <- as.numeric(max_vals[1, z]) + pad
+    min_vals[1, z] <- as.numeric(min_vals[1, z]) - pad
+  }
+
+  web <- rbind(max_vals, min_vals, mean_vals)
+  web[] <- lapply(web, as.numeric)
+
+  radarchart(web, na.itp = TRUE)
+}
+
+radar_by_group <- function(df, group_col = "group_index", stat = "mean") {
+  num <- df %>%
+    mutate(across(where(is.numeric), ~ ifelse(is.finite(.x), .x, NA_real_)))
+
+  # 1) aggregate per group
+  fun <- switch(stat,
+                mean = ~mean(.x, na.rm = TRUE),
+                median = ~median(.x, na.rm = TRUE),
+                stop("stat must be 'mean' or 'median'"))
+  grp <- num %>%
+    group_by(.data[[group_col]]) %>%
+    summarise(across(where(is.numeric), fun), .groups = "drop")
+
+  # 2) build fmsb input: first two rows = per-variable max/min over all groups
+  vals <- grp %>% select(-all_of(group_col))
+  rownames(vals) <- grp[[group_col]]
+  max_vals <- summarise_all(vals, max, na.rm = TRUE)
+  min_vals <- summarise_all(vals, min, na.rm = TRUE)
+
+  # pad zero-range axes
+  rng <- as.numeric(max_vals[1, ] - min_vals[1, ])
+  z <- which(is.na(rng) | rng == 0)
+  if (length(z)) {
+    max_vals[1, z] <- as.numeric(max_vals[1, z]) + 1e-6
+    min_vals[1, z] <- as.numeric(min_vals[1, z]) - 1e-6
+  }
+
+  web <- rbind(max_vals, min_vals, vals)
+
+  # 3) colors and legend
+  n <- nrow(web) - 2
+  pal <- brewer.pal(max(3, min(8, n)), "Set2")[seq_len(n)]
+  fill <- adjustcolor(pal, alpha.f = 0.25)
+
+  radarchart(
+    web,
+    pcol   = pal,
+    pfcol  = fill,
+    plwd   = 2,
+    plty   = 1,
+    cglcol = "grey80",
+    cglty  = 1,
+    cglwd  = 0.8,
+    axislabcol = "grey30",
+    vlcex  = 0.8
+  )
+
+  legend("topright",
+         legend = rownames(web)[-c(1,2)],
+         bty = "n", pch = 15, pt.cex = 1.3,
+         col = fill, text.col = "grey20")
+}
+
+summary <- create_summary(df)
+render_radar_plot(summary)
+```
 
 ## Linear Regression
 
@@ -445,9 +670,155 @@ ggcorrplot(cm, lab = FALSE)
 
 Here we can see that the performance metric "perform1" has a correlation to phonecall, phonecallraw, logphonecall, logcalllength, which gives us a hint on how this metrics was calculated. Furthermore we can see, a negative correlation between "negative" and "positive" from the attitude dataset, which makes sense as these are opposites. Because of the timeseries data of the performance data set, the light correlation can be explained as the attitude may change from day to day, or not (what we can not infer from that). There is also a slight correlation between exhaustion and negative attitude, which seems logical. What we cannot see are significant correlations between quit_job and any variable and other than the cluster itself between perfrom1 and any other variable. Quit_job has moderate negative correlations to bonuses/grosswage and promotions.
 
-We cannot see any clear indicators on how to fight churn rate and/or what motivates people to perform better. Therefore we will have a look on different groups of people.
+We cannot see any clear indicators on how to fight churn rate and/or what motivates people to perform better.
 
 # Detailed exploration analysis
+
+## Function for radar plots
+
+```{r}
+# A funcion to render web plots for out data with some modificatino parameters
+# The function first selects the desired column and than summarises the data based on what groups to compare. It uses the 90% and 10% uppder/lower quantiles as min and max values.
+radar_by_group <- function(df, include_group_indices = c(),group_col = "group_index", stat = "mean", title = "Some title", show_full_attitude = TRUE, show_full_performance=FALSE, show_full_wage = FALSE, show_commute=TRUE, save=TRUE) {
+  # open device to safe as png
+  if(save==TRUE){
+    png(paste0(title,".png"), width = 2400, height = 2000, res = 300)  
+  }
+  # check for parameters
+  stopifnot(group_col %in% names(df))
+  # select, based on parameters, columns
+ final_selection = c(group_col, "gender_num", "married_num", "bedroom", "children_num", "high_educ_num", "promote_switch_num", "quitjob_num", "homethatweek_num", "perform1", "grosswage", "exhaustion","tenure")
+  if (show_full_attitude==TRUE) {
+    selection = c("negative","positive")
+    final_selection <- c(selection, final_selection)
+  }
+  if (show_full_performance==TRUE) {
+    selection = c("logdaysworked","logcall_dayworked","logcalllength","logcallpersec","logphonecall","phonecallraw","phonecall")
+    final_selection <- c(selection, final_selection)
+  }
+  if (show_full_wage==TRUE) {
+      selection = c("bonustotal","basewage")
+      final_selection <- c(selection, final_selection)
+  }
+  if (show_commute==TRUE) {
+      selection = c("commute","costofcommute")
+      final_selection <- c(selection, final_selection)
+  }
+  # chek if group col is in any of the selected field, if so, remove it
+  if (group_col %in% sub("_num$", "", final_selection)){
+    final_selection <- final_selection[final_selection!=paste0(group_col,"_num")]
+  }
+  print(final_selection)
+  df <- df%>% select(final_selection)
+  # only used numeric columns (+ group column) for computation and only real numbers
+  num <- df %>%
+    select(all_of(group_col), where(is.numeric)) %>%
+    mutate(across(where(is.numeric), ~ ifelse(is.finite(.x), .x, NA_real_)))
+  
+  # remove "_num" to shorten names of var
+  num <- num %>% rename_with(~ sub("_num$", "", .x))
+  # select the min max values based on the 90%/10% quantile of the overall data
+  max_vals <- summarise(num, across(where(is.numeric), ~ quantile(.x, 0.9, na.rm = TRUE)))
+  min_vals <- summarise(num, across(where(is.numeric), ~ quantile(.x, 0.1, na.rm = TRUE)))
+  # aggregate per group (mean or median)
+  agg_fun <- switch(stat,
+                    mean = ~mean(.x, na.rm = TRUE),
+                    median = ~median(.x, na.rm = TRUE),
+                    stop("stat must be 'mean' or 'median'"))
+  vals <- num %>%
+    group_by(.data[[group_col]]) %>%
+    summarise(across(where(is.numeric), agg_fun), .groups = "drop")
+  
+  # get the correct label
+  if (length(include_group_indices)>0){
+    print(vals)
+    print(group_col)
+    print(include_group_indices)
+    labels <- vals %>% filter(.data[[group_col]] %in% include_group_indices) 
+    print(labels)
+    labels <- as.character(labels[[group_col]])
+    print(labels)
+  }
+  # again check for not numeric values and drop them if needed
+  keep <- vapply(vals, function(x) any(!is.na(x)), logical(1))
+  vals <- vals[, keep, drop = FALSE]
+  # check for enough values to display
+  if (ncol(vals) < 3) stop("Need ≥3 valid numeric variables after cleaning.")
+  # fill remaining NA cells with column means to avoid NA polygons
+  cm <- vapply(vals, function(x) mean(x, na.rm = TRUE), numeric(1))
+  for (j in seq_along(vals)) vals[[j]][is.na(vals[[j]])] <- cm[j]
+  # per-variable max/min, pad zero ranges
+  rng <- as.numeric(max_vals[1, ] - min_vals[1, ])
+  z <- which(is.na(rng) | rng == 0)
+  pad <- 1e-6
+  rng <- as.numeric(max_vals[1, ] - min_vals[1, ])
+  z <- which(is.na(rng) | rng == 0)
+  if (length(z)) {
+    mx <- as.numeric(max_vals[1, ])
+    mn <- as.numeric(min_vals[1, ])
+    mx[z] <- mx[z] + pad
+    mn[z] <- mn[z] - pad
+    max_vals[1, ] <- as.list(mx)
+    min_vals[1, ] <- as.list(mn)
+  }
+  # ensure base data.frames to simplify row assignment
+  max_vals <- as.data.frame(max_vals)
+  min_vals <- as.data.frame(min_vals)
+  # sub select values from desired groups
+  if (length(include_group_indices)>0) {
+    vals <- vals %>% filter(.data[[group_col]] %in% include_group_indices)
+  }
+  # remove group index to not be displayed as category in the web chart
+  vals <- vals %>% select(-all_of(group_col))
+  if (group_col %in% colnames(max_vals)) {
+    max_vals <- max_vals %>% select(-all_of(group_col))
+  }
+  if (group_col %in% colnames(min_vals)) {
+    min_vals <- min_vals %>% select(-all_of(group_col))
+  }
+  # cap values if they exceed the bounds
+  vals <- vals %>%
+    mutate(across(
+      everything(),
+      ~ pmax(
+          pmin(.x, max_vals[[cur_column()]][1]),   # upper bound for this var
+          min_vals[[cur_column()]][1]              # lower bound for this var
+        )
+    ))
+  # put everything together
+  web <- rbind(max_vals, min_vals, vals)
+  web[] <- lapply(web, function(x) as.numeric(x))  # ensure numeric matrix
+
+  # # make it look nice
+  n <- nrow(web) - 2
+  cols <- grDevices::hcl(h = seq(15, 375, length.out = n + 1)[1:n],
+                         c = 80, l = 60)
+  fills <- grDevices::adjustcolor(cols, alpha.f = 0.25)
+  cols <- c("#2CB1A6",  # teal-mint
+          "#1B1E3F",  # deep navy
+          "#94A3B8",  # cool gray
+          "#A7F3D0",  # light mint
+          "#F4A261") # muted coral
+  fills <- adjustcolor(cols, alpha.f = 0.25)
+  # plot it
+  radarchart(web,
+             pcol   = cols[seq_len(nrow(web)-2)],
+             pfcol  = fills[seq_len(nrow(web)-2)],
+             plwd = 2, plty = 1,
+             cglcol = "grey80", cglwd = 0.8, axislabcol = "grey30",
+             vlcex = 1.2, na.itp = TRUE)
+  title(main = title)
+  # add a little legend
+  if(!is.null(group_col)){
+    legend("topright", legend = labels,
+         bty = "n", pch = 15, pt.cex = 1.3, col = cols[seq_len(nrow(web)-2)], text.col = "grey20")
+  }
+  # close device
+  if(save==TRUE){
+    dev.off()
+  }
+}
+```
 
 ## Quitter vs no-quitters
 
@@ -488,6 +859,127 @@ cm <- cor(nums, use = "pairwise.complete.obs")
 ggcorrplot(cm, lab = FALSE)
 ```
 
+```{r}
+df <- volunteer_endperiod_attitude_performance_wage
+quitter_df <- df %>% filter(quitjob == TRUE)
+non_quitter_df <- df %>% filter(quitjob == FALSE)
+# Make some nice looking box plots for perform, commute
+stats <- quitter_df %>% summarise(
+  min  = min(perform1, na.rm = TRUE),
+  max  = max(perform1, na.rm = TRUE),
+  mean = mean(perform1, na.rm = TRUE),
+  median = median(perform1, na.rm = TRUE),
+  sd   = sd(perform1, na.rm = TRUE)
+)
+
+p <- ggplot(df, aes(y = perform1, x=quitjob)) +
+  geom_boxplot(
+    outlier.alpha = 0.6,
+    outlier.size = 1.8,
+    fill = "#9df3c4",
+    color = "#0d0c3f"
+  ) +
+  labs(y = "Performance score", title = "Performance - quitters vs. non-quitters") +
+  theme_minimal()
+
+# add annotations
+p + annotate("text", x = 2.3, y = 4, 
+           label = paste0("SD: ", round(stats$sd,2)), 
+           hjust = 0, color = "#0d0c3f")+
+  annotate("text", x = 2.3, y = 3.6, 
+           label = paste0("Mean: ", round(stats$mean,2)), 
+           hjust = 0, color = "#0d0c3f")+
+  annotate("text", x = 2.3, y = 3.2, 
+           label = paste0("Median: ", round(stats$median,2)), 
+           hjust = 0, color = "#0d0c3f") +
+  annotate("text", x = 2.3, y = 2.8, 
+           label = paste0("Min: ", round(stats$min,2)), 
+           hjust = 0, color = "#0d0c3f") +
+  annotate("text", x = 2.3, y = 2.4, 
+           label = paste0("Max: ", round(stats$max,2)), 
+           hjust = 0, color = "#0d0c3f") 
+
+ggsave("performance_quitter_non_quitters.png", width = 7, height = 5, dpi = 300)
+
+stats <- quitter_df %>% summarise(
+  min  = min(commute, na.rm = TRUE),
+  max  = max(commute, na.rm = TRUE),
+  mean = mean(commute, na.rm = TRUE),
+  median = median(commute, na.rm = TRUE),
+  sd   = sd(commute, na.rm = TRUE)
+)
+
+p <- ggplot(df, aes(y = commute, x=quitjob)) +
+  geom_boxplot(
+    outlier.alpha = 0.6,
+    outlier.size = 1.8,
+    fill = "#9df3c4",
+    color = "#0d0c3f"
+  ) +
+  labs(y = "Commute score", title = "Commute - quitters vs. non-quitters") +
+  theme_minimal()
+
+# add annotations
+p + annotate("text", x = 2.3, y = 4, 
+           label = paste0("SD: ", round(stats$sd,2)), 
+           hjust = 0, color = "#0d0c3f")+
+  annotate("text", x = 2.3, y = 3.6, 
+           label = paste0("Mean: ", round(stats$mean,2)), 
+           hjust = 0, color = "#0d0c3f")+
+  annotate("text", x = 2.3, y = 3.2, 
+           label = paste0("Median: ", round(stats$median,2)), 
+           hjust = 0, color = "#0d0c3f") +
+  annotate("text", x = 2.3, y = 2.8, 
+           label = paste0("Min: ", round(stats$min,2)), 
+           hjust = 0, color = "#0d0c3f") +
+  annotate("text", x = 2.3, y = 2.4, 
+           label = paste0("Max: ", round(stats$max,2)), 
+           hjust = 0, color = "#0d0c3f") 
+
+ggsave("commute_quitter_non_quitters.png", width = 7, height = 5, dpi = 300)
+
+stats <- quitter_df %>% summarise(
+  min  = min(grosswage, na.rm = TRUE),
+  max  = max(grosswage, na.rm = TRUE),
+  mean = mean(grosswage, na.rm = TRUE),
+  median = median(grosswage, na.rm = TRUE),
+  sd   = sd(grosswage, na.rm = TRUE)
+)
+
+p <- ggplot(df, aes(y = grosswage, x=quitjob)) +
+  geom_boxplot(
+    outlier.alpha = 0.6,
+    outlier.size = 1.8,
+    fill = "#9df3c4",
+    color = "#0d0c3f"
+  ) +
+  labs(y = "Grosswage in CNY", title = "Grosswage - quitters vs. non-quitters") +
+  theme_minimal()
+
+# add annotations
+p + annotate("text", x = 2.1, y = 14000, 
+           label = paste0("SD: ", round(stats$sd,0), "CNY"), 
+           hjust = 0, color = "#0d0c3f")+
+  annotate("text", x = 2.1, y = 13000, 
+           label = paste0("Mean: ", round(stats$mean,0), "CNY"), 
+           hjust = 0, color = "#0d0c3f")+
+  annotate("text", x = 2.1, y = 12000, 
+           label = paste0("Median: ", round(stats$median,0), "CNY"), 
+           hjust = 0, color = "#0d0c3f") +
+  annotate("text", x = 2.1, y = 11000, 
+           label = paste0("Min: ", round(stats$min,0), "CNY"), 
+           hjust = 0, color = "#0d0c3f") +
+  annotate("text", x = 2.1, y = 10000, 
+           label = paste0("Max: ", round(stats$max,0), "CNY"), 
+           hjust = 0, color = "#0d0c3f") 
+
+ggsave("grosswage_quitter_non_quitters.png", width = 7, height = 5, dpi = 300)
+
+# radar plot to compare quitter vs non quitter
+radar_by_group(df, group_col="quitjob", include_group_indices=c(TRUE, FALSE), title="Quitter vs non-quitters")
+
+```
+
 Generally speaking quitters perform less, work for the company shorter than average, have an average age, have slightly higher costs of commute while commuting about the same in minutes per week, earn less and work not from home in comparison to workers who stay. When begin older, quitters have a higher tendency to have children, being married and have higher education. People who were older and left at some point generally performed better than younger quitters. People who stay, tend to have lower cost of commute and lower commute times (maybe because they commit to working for the company and move closer to it).
 
 We can already get a clue from this comparison of the differences between quitters and non quitters about the group constellation and personas.
@@ -495,6 +987,8 @@ We can already get a clue from this comparison of the differences between quitte
 ## Groups
 
 Lets have a look on all possible combinations of categorical values and which are represented within the volunteer dataset with a threshold of at least 100 people-work-performances per group. We choose this sample size to increase our confidence. Afterwards we will do the same general analysis we did for the whole population for each group.
+
+Important note: Because all quitters do not have attitude data, positive, negative and exhaustion appear to be "average" on the radar plots, but are actually NULL which is caused by the radar plotting function.
 
 ### Available groups
 
@@ -560,6 +1054,9 @@ ggplot(summary_df, aes(x = factor(group_index), y = quitjob_num_mean)) +
   geom_boxplot() +
   labs(x = "Group index", y = "percentage to quit (0-1)") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+df <- volunteer_endperiod_attitude_performance_wage
+radar_by_group(df, group_col="group_index", include_group_indices=c(7,16,40,48,60), title="Quitter group characteristics", save=TRUE)
 ```
 
 Here we can clearly identify groups 7,16,40,48 and 60 where all people quit. Within the rest of the groups nobody quit.
@@ -615,6 +1112,8 @@ unique(group7 %>%select(personid))
 nums <- dplyr::select(group7, where(is.numeric))
 cm <- cor(nums, use = "pairwise.complete.obs")
 ggcorrplot(cm, lab = FALSE)
+# radar plot
+radar_by_group(df, group_col="group_index", include_group_indices=c(7), title="Group 7 characteristics")
 ```
 
 #### Group 16
@@ -661,6 +1160,8 @@ unique(group16 %>%select(personid))
 nums <- dplyr::select(group16, where(is.numeric))
 cm <- cor(nums, use = "pairwise.complete.obs")
 ggcorrplot(cm, lab = FALSE)
+# radar plot
+radar_by_group(df, group_col="group_index", include_group_indices=c(16), title="Group 16 characteristics")
 ```
 
 #### Group 40
@@ -708,6 +1209,8 @@ unique(group40 %>%select(personid))
 nums <- dplyr::select(group40, where(is.numeric))
 cm <- cor(nums, use = "pairwise.complete.obs")
 ggcorrplot(cm, lab = FALSE)
+# radar plot
+radar_by_group(df, group_col="group_index", include_group_indices=c(40), title="Group 40 characteristics")
 ```
 
 #### Group 48
@@ -755,6 +1258,8 @@ unique(group48 %>%select(personid))
 nums <- dplyr::select(group48, where(is.numeric))
 cm <- cor(nums, use = "pairwise.complete.obs")
 ggcorrplot(cm, lab = FALSE)
+# radar plot
+radar_by_group(df, group_col="group_index", include_group_indices=c(48), title="Group 48 characteristics")
 ```
 
 #### Group 60
@@ -802,6 +1307,29 @@ unique(group60 %>%select(personid))
 nums <- dplyr::select(group60, where(is.numeric))
 cm <- cor(nums, use = "pairwise.complete.obs")
 ggcorrplot(cm, lab = FALSE)
+# radar plot
+radar_by_group(df, group_col="group_index", include_group_indices=c(60), title="Group 60 characteristics")
+```
+
+### Compare the quitter groups
+
+```{r}
+df <- volunteer_endperiod_attitude_performance_wage
+
+# plot characteristic radar plot for quitters (per group and summary)
+quitter_group_vec<-c(7,16,40,48,60)
+radar_by_group(df, group_col="group_index", include_group_indices=quitter_group_vec, title="Quitter profiles by group index")
+radar_by_group(df, group_col="quitjob", include_group_indices=c(TRUE), title="General quitter profile")
+
+
+# plot characteristic radar plot for non quitters (per group and summary)
+# get all available groups
+all_groups_vec <- unique(df %>% pull(group_index))
+non_quitter_group_vec <- setdiff(all_groups_vec, quitter_group_vec)
+
+radar_by_group(df, group_col="quitjob", include_group_indices=c(FALSE), title="General non-quitter profile")
+
+#radar_by_group(df)
 ```
 
 ## Top performing 10%
@@ -851,6 +1379,10 @@ ggcorrplot(cm, lab = FALSE)
 nums <- dplyr::select(bottom90, where(is.numeric))
 cm <- cor(nums, use = "pairwise.complete.obs")
 ggcorrplot(cm, lab = FALSE)
+
+
+# radar plot
+radar_by_group(df, group_col="isTop10", include_group_indices=c(TRUE, FALSE), title="Top vs low performer")
 ```
 
 The average employee among the top 10% performing ones, has no children, though it is more likely than for the other 90%, works 25% oft the time from home, is almost 24 years old, works for 32 months at the company and an average commute and average cost of commute. Almost 22% receive a promotion, whereas 17.7% of lower performing people receive one. They earn over the average by bonuses, but have a average base salary. Though some not high performing individuals receive enormous bonuses. Only 18% high performing people quit while 25% quit from the other 90%.
@@ -864,5 +1396,41 @@ Top performer are less likely to quit when receiving a higher bonus than non per
 -   check existing bonuses for not high performing people and reevaluate if that is fair, this might be a motivation killer
 
 -   offer more working from home for high performer, as it does not affect their performance and rather increases positivity
+
+Make perform1 and grosswage poxplots look nice
+
+```{r}
+
+p <- ggplot(df, aes(y = perform1, x=isTop10)) +
+  geom_boxplot(
+    outlier.alpha = 0.6,
+    outlier.size = 1.8,
+    fill = "#9df3c4",
+    color = "#0d0c3f"
+  ) +
+  labs(y = "Performance score", title = "Performance - Top-Performer vs. others") +
+  theme_minimal()
+
+# add annotations
+p 
+
+ggsave("performance_top_low.png", width = 7, height = 5, dpi = 300)
+
+
+p <- ggplot(df, aes(y = grosswage, x=isTop10)) +
+  geom_boxplot(
+    outlier.alpha = 0.6,
+    outlier.size = 1.8,
+    fill = "#9df3c4",
+    color = "#0d0c3f"
+  ) +
+  labs(y = "Grosswage in CNY", title = "Grosswage - Top-Performer vs. others") +
+  theme_minimal()
+
+# add annotations
+p 
+colnames(df)
+ggsave("grosswage_top_low.png", width = 7, height = 5, dpi = 300)
+```
 
 # Hypothesis testing
