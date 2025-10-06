@@ -1,6 +1,8 @@
 ---
 title: "Group Assignment Trimester 1 25/26"
-output: github_document
+output:
+  pdf_document:
+    latex_engine: xelatex
 date: "2025-09-16"
 ---
 
@@ -57,11 +59,31 @@ rm(data_wage_new)
 
 # Cleaning data
 
-## Some handy functions for cleaning
+## Handy functions for cleaning
 
 Here come some handy functions to reduce duplicate code for cleaning the data:
 
 ```{r}
+# convert to numeric, if its a number (not NA)
+as_numeric <- function (x) {
+  x <- as.character(x)
+  # only convert if it looks numeric
+  if (grepl("^[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?$", x)) {
+    as.numeric(x)
+  } else {
+    NA_real_
+  }
+}
+# convert to integer, if its a number (not NA)
+as_integer <- function (x) {
+  # only convert if it looks numeric
+  x <- as.character(x)
+  if (grepl("^[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?$", x)) {
+    as.integer(x)
+  } else {
+    NA_real_
+  }
+}
 # Extract a numeric values correctly from a string value, considering multiple cases
 extract_numeric <- function(x) {
   # remove leading/trailing spaces
@@ -94,7 +116,7 @@ extract_numeric <- function(x) {
     x <- gsub(",", "", x)
   }
   
-  as.numeric(x)
+  as_numeric(x)
 }
 
 # find all non numeric characters in a string and return them
@@ -130,56 +152,56 @@ We can see a lot of columns with numerical values within strings and additional 
 volunteer$personid <- as.character(as.integer(volunteer$personid))
 # Clean Numbers with extra characters
 # Remove non-numeric characters, except dots and commas and convert to numeric
-volunteer[["commute"]] <- sapply(volunteer$commute, extract_numeric)
-volunteer[["commute"]] <- as.numeric(volunteer[["commute"]])
+volunteer$commute <- sapply(volunteer$commute, extract_numeric)
+volunteer$commute <- sapply(volunteer$commute, as_numeric)
 
 # convert "no" strings in the children column to 0 children
-volunteer[["children"]] <- ifelse(volunteer[["children"]] %in% c("No", ""), "0", volunteer[["children"]])
+volunteer$children <- ifelse(volunteer$children %in% c("No", ""), "0", volunteer$children)
 # convert to boolean by first converting to integer
-volunteer[["children"]] <- as.logical(as.integer(volunteer[["children"]]))
+volunteer$children <- as.logical(sapply(volunteer$children, as_integer))
 # Convert Tenure to integer, as float dont make sense for months
-volunteer[["tenure"]] <- as.integer(volunteer[["tenure"]])
+volunteer$tenure <- sapply(volunteer$tenure, as_integer)
 
 # convert bedroom to boolean by first converting 0s to False, 1 to true
-volunteer[["bedroom"]]<- ifelse(
-    volunteer[["bedroom"]] == "0", 
+volunteer$bedroom<- ifelse(
+    volunteer$bedroom == "0", 
     0, 
     1
     )
-volunteer[["bedroom"]] <- as.integer(volunteer[["bedroom"]])
+volunteer$bedroom <- sapply(volunteer$bedroom, as_integer)
 # normalize gender data by
 # lower all charcters
-volunteer[["gender"]] <- tolower(volunteer[["gender"]])
+volunteer$gender <- tolower(volunteer$gender)
 # trim whitespaces
-volunteer[["gender"]] <- trimws(volunteer[["gender"]])
+volunteer$gender <- trimws(volunteer$gender)
 # cast all possible options for male and female
-volunteer[["gender"]] <- ifelse(volunteer[["gender"]] %in% c("m", "male", "man"), "male", volunteer[["gender"]])
-volunteer[["gender"]] <- ifelse(volunteer[["gender"]] %in% c("woman", "female", "f", "w","fem"), "female", volunteer[["gender"]])
+volunteer$gender <- ifelse(volunteer$gender %in% c("m", "male", "man"), "male", volunteer$gender)
+volunteer$gender <- ifelse(volunteer$gender %in% c("woman", "female", "f", "w","fem"), "female", volunteer$gender)
 
 # using a similar approach to the gender we convert the married status now
-volunteer[["married"]] <- tolower(volunteer[["married"]])
+volunteer$married <- tolower(volunteer$married)
 # trim whitespaces
-volunteer[["married"]] <- trimws(volunteer[["married"]])
+volunteer$married <- trimws(volunteer$married)
 # cast all possible options for married/not married
-volunteer[["married"]] <- ifelse(volunteer[["married"]] %in% c("married", "yes", "y", "true"), "TRUE", volunteer[["married"]])
-volunteer[["married"]] <- ifelse(volunteer[["married"]] %in% c("no", "not married", "n", "na", "single","false"), "FALSE", volunteer[["married"]])
+volunteer$married <- ifelse(volunteer$married %in% c("married", "yes", "y", "true"), "TRUE", volunteer$married)
+volunteer$married <- ifelse(volunteer$married %in% c("no", "not married", "n", "na", "single","false"), "FALSE", volunteer$married)
 
 # using a similar approach to the married column we convert the high_educ status now
-volunteer[["high_educ"]] <- tolower(volunteer[["high_educ"]])
+volunteer$high_educ <- tolower(volunteer$high_educ)
 # trim whitespaces
-volunteer[["high_educ"]] <- trimws(volunteer[["high_educ"]])
+volunteer$high_educ <- trimws(volunteer$high_educ)
 # cast all possible options for high_educ/not high_educ
-volunteer[["high_educ"]] <- ifelse(volunteer[["high_educ"]] %in% c("yes", "y"), "TRUE", volunteer[["high_educ"]])
-volunteer[["high_educ"]] <- ifelse(volunteer[["high_educ"]] %in% c("no", "n","false"), "FALSE", volunteer[["high_educ"]])
+volunteer$high_educ <- ifelse(volunteer$high_educ %in% c("yes", "y"), "TRUE", volunteer$high_educ)
+volunteer$high_educ <- ifelse(volunteer$high_educ %in% c("no", "n","false"), "FALSE", volunteer$high_educ)
 
 # convert to boolean
-volunteer[["high_educ"]] <- as.logical(volunteer[["high_educ"]])
+volunteer$high_educ <- as.logical(volunteer$high_educ)
 
 # create numerical variable cols for gender and married
-volunteer$gender_num <-as.integer(ifelse(volunteer$gender=="male",0,1))
-volunteer$married_num <-as.integer(ifelse(volunteer$married==FALSE,0,1))
-volunteer$high_educ_num <-as.integer(ifelse(volunteer$high_educ==FALSE,0,1))
-volunteer$children_num <-as.integer(ifelse(volunteer$children==FALSE,0,1))
+volunteer$gender_num <- sapply(ifelse(volunteer$gender=="male",0,1), as_integer)
+volunteer$married_num <- sapply(ifelse(volunteer$married==FALSE,0,1), as_integer)
+volunteer$high_educ_num <- sapply(ifelse(volunteer$high_educ==FALSE,0,1), as_integer)
+volunteer$children_num <-sapply(ifelse(volunteer$children==FALSE,0,1), as_integer)
 
 # remove duplicates on same personid
 volunteer <- volunteer %>%
@@ -197,9 +219,9 @@ stargazer(as.data.frame(volunteer), type = "text", median = TRUE, header = TRUE)
 glimpse(attitude)
 stargazer(as.data.frame(attitude), type = "text", median = TRUE, header = TRUE)
 # checking unique values to decide int vs dbl
-unique(attitude[["exhausting"]])
-unique(attitude[["positive"]])
-unique(attitude[["negative"]])
+unique(attitude$exhausting)
+unique(attitude$positive)
+unique(attitude$negative)
 ```
 
 We see that we do not have missing values, and the data types for all columns already fit. We only need to convert personid to a string.
@@ -231,14 +253,13 @@ No missing values, promote_switch and quitjob are logical values, though we also
 # convert to integer to remove leading zeros an than to str
 endperiod$personid <- as.character(as.integer(endperiod$personid))
 # convert to integers
-endperiod[["promote_switch_num"]] <- as.integer(endperiod[["promote_switch"]])
-endperiod[["quitjob_num"]] <- as.integer(endperiod[["quitjob"]])
+endperiod$promote_switch_num <- sapply(endperiod$promote_switch, as_integer)
+endperiod$quitjob_num <- sapply(endperiod$quitjob, as_integer)
 # convert to logical (too have numerical and categorical variables)
-endperiod[["promote_switch"]] <- as.logical(endperiod[["promote_switch_num"]])
-endperiod[["quitjob"]] <- as.logical(endperiod[["quitjob_num"]])
+endperiod$promote_switch <- as.logical(endperiod$promote_switch_num)
+endperiod$quitjob <- as.logical(endperiod$quitjob_num)
 # extract numbers from string. Both, dots and commas are used as decimal separators
-endperiod[["costofcommute"]]<- gsub("[^0-9.,]", "", endperiod[["costofcommute"]])
-endperiod[["costofcommute"]] <- as.numeric(endperiod[["costofcommute"]])
+endperiod$costofcommute<- sapply(endperiod$costofcommute, extract_numeric)
 # remove duplicates on same personid
 endperiod <- endperiod %>%
   distinct(personid, .keep_all = TRUE)
@@ -256,7 +277,7 @@ Cost of commute has two missing values, which needs to be considered during anal
 ```{r}
 glimpse(performance)
 stargazer(as.data.frame(performance), type = "text", median = TRUE, header = TRUE)
-unique(performance[["homethatweek"]])
+unique(performance$homethatweek)
 
 # check character columns with numerical values to extract for non numeric chars to
 # be aware for special cases
@@ -280,24 +301,24 @@ Personid needs to be converted to a string, as well as all all the call and perf
 # convert to integer to remove leading zeros an than to str
 performance$personid <- as.character(as.integer(performance$personid))
 # trim year_week and remove all not nuemerical characters
-performance[["year_week"]] <- trimws(performance[["year_week"]])
-performance[["year_week"]]<- gsub("[^0-9.]", "", performance[["year_week"]])
+performance$year_week <- trimws(performance$year_week)
+performance$year_week<- gsub("[^0-9.]", "", performance$year_week)
 # convert to float/doubles
-performance[["perform1"]] <- as.numeric(performance[["perform1"]])
-performance[["phonecall"]] <- as.numeric(performance[["phonecall"]])
+performance$perform1 <- sapply(performance$perform1, as_numeric)
+performance$phonecall <- sapply(performance$phonecall, as_numeric)
 # convert to integer
-performance[["phonecallraw"]] <- as.integer(performance[["phonecallraw"]])
+performance$phonecallraw <- sapply(performance$phonecallraw, as_integer)
 # convert to boolean
-performance[["homethatweek_num"]] <- as.integer(performance[["homethatweek"]])
-performance[["homethatweek"]] <- as.logical(performance[["homethatweek_num"]])
+performance$homethatweek_num <- sapply(performance$homethatweek, as_integer)
+performance$homethatweek <- sapply(performance$homethatweek, as_integer)
 # convert to float/doubles
-performance[["logphonecall"]] <- as.numeric(performance[["logphonecall"]])
-performance[["logcallpersec"]] <- as.numeric(performance[["logcallpersec"]])
-performance[["logcalllength"]] <- as.numeric(performance[["logcalllength"]])
-performance[["logcall_dayworked"]] <- as.numeric(performance[["logcall_dayworked"]])
-performance[["logdaysworked"]] <- as.numeric(performance[["logdaysworked"]])
+performance$logphonecall <- sapply(performance$logphonecall, as_numeric)
+performance$logcallpersec <- sapply(performance$logcallpersec, as_numeric)
+performance$logcalllength <- sapply(performance$logcalllength, as_numeric)
+performance$logcall_dayworked <- sapply(performance$logcall_dayworked, as_numeric)
+performance$logdaysworked <- sapply(performance$logdaysworked, as_numeric)
 # convert to Date
-performance[["date"]] <- as.Date(performance[["date"]])
+performance$date <- as.Date(performance$date)
 
 # remove duplicates on same personid, year_week
 performance <- performance %>%
@@ -330,12 +351,12 @@ We have no numerical values yet. basewage, can be converted to integer, gross_wa
 ```{r}
 # convert to integer to remove leading zeros an than to str
 wage$personid <- as.character(as.integer(wage$personid))
-wage[["basewage"]] <- as.integer(wage[["basewage"]])
-wage[["grosswage"]] <- as.numeric(wage[["grosswage"]])
-wage[["wage_month"]] <- trimws(wage[["wage_month"]])
-wage[["wage_month"]]<- gsub("[^0-9.]", "", wage[["wage_month"]])
+wage$basewage <- as.integer(wage$basewage)
+wage$grosswage <- sapply(wage$grosswage, as_numeric)
+wage$wage_month <- trimws(wage$wage_month)
+wage$wage_month<- gsub("[^0-9.]", "", wage$wage_month)
 wage <- rename(wage, year_month=wage_month)
-wage[["bonustotal"]] <- as.numeric(wage[["bonustotal"]])
+wage$bonustotal <- sapply(wage$bonustotal, as_numeric)
 # remove duplicates on same personid, yearmonth
 wage <- wage %>%
   distinct(personid, year_month, .keep_all = TRUE)
@@ -473,7 +494,7 @@ p + annotate("text", x = 0.27, y = 4,
            hjust = 0, color = "#0d0c3f")+
   annotate("text", x = 0.27, y = 3.6, 
            label = paste0("Mean: ", round(stats$mean,2)), 
-           hjust = 0, color = "#0d0c3f")+
+           text = 0, color = "#0d0c3f")+
   annotate("text", x = 0.27, y = 3.2, 
            label = paste0("Median: ", round(stats$median,2)), 
            hjust = 0, color = "#0d0c3f") +
@@ -670,7 +691,7 @@ summary <- create_summary(df)
 render_radar_plot(summary)
 ```
 
-## Linear Regression
+## Basic correlation analysis
 
 ```{r}
 nums <- dplyr::select(volunteer_endperiod_attitude_performance_wage, where(is.numeric))
@@ -1319,6 +1340,8 @@ cm <- cor(nums, use = "pairwise.complete.obs")
 ggcorrplot(cm, lab = FALSE)
 # radar plot
 radar_by_group(df, group_col="group_index", include_group_indices=c(60), title="Group 60 characteristics")
+
+stargazer( group60, type = "text", omit.stat = c("f", "adj.rsq", "ser"), no.space = TRUE, header = FALSE)
 ```
 
 ### Compare the quitter groups
@@ -1444,3 +1467,315 @@ ggsave("grosswage_top_low.png", width = 7, height = 5, dpi = 300)
 ```
 
 # Hypothesis testing
+
+## Quitters vs non quitters
+
+```{r}
+# H0: There is no difference in earnings between quitters and non-quitters
+# H1: There is a significant difference in earnings between quitters and non-quitters
+volunteer_endperiod_attitude_performance_wage %>%
+  group_by(personid, quitjob_num) %>%
+  summarise(mean_grossw = mean(grosswage, na.rm = TRUE), .groups = "drop") %>%
+  filter(!is.na(mean_grossw)) %>%
+  t.test(mean_grossw ~ quitjob_num, data = ., alternative = "greater")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+
+#H0: There is no difference between perform1 of quitters and non-quitters
+#H1: There is a significant difference between perform1 of quitters and non-quitters
+volunteer_endperiod_attitude_performance_wage %>%
+  group_by(personid, quitjob_num) %>%
+  summarise(mean_perform1 = mean(perform1, na.rm = TRUE), .groups = "drop") %>%
+  filter(!is.na(mean_perform1)) %>%
+  t.test(mean_perform1 ~ quitjob_num, data = ., alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+
+#H0: There is no difference in tenure between quitters and non-quitters
+#H1: There is a significant difference in tenure between quitters and non-quitters
+volunteer_endperiod_attitude_performance_wage %>%
+  group_by(personid, quitjob_num) %>%
+  summarise(mean_tenure = mean(tenure, na.rm = TRUE), .groups = "drop") %>%
+  filter(!is.na(mean_tenure)) %>%
+  t.test(mean_tenure ~ quitjob_num, data = ., alternative = "greater")
+
+# we fail to reject the null hypothesis, as p-value is greater than 0.05
+
+
+#H0: there is no difference in commutecost between quitters and non-quitters
+#H1: there is a significant difference in commutecost between quitters and non-quitters
+volunteer_endperiod_attitude_performance_wage %>%
+  group_by(personid, quitjob_num) %>%
+  summarise(mean_costofcommute = mean(costofcommute, na.rm = TRUE), .groups = "drop") %>%
+  filter(!is.na(mean_costofcommute)) %>%
+  t.test(mean_costofcommute ~ quitjob_num, data = ., alternative = "greater")
+
+# we fail to reject the null hypothesis, as p-value is greater than 0.05
+
+
+#H0: there is no difference in homeoffice_days between quitters and non-quitters
+#H1: there is a significant difference in homeoffice_days between quitters and non-quitters
+volunteer_endperiod_attitude_performance_wage %>%
+  group_by(personid, quitjob_num) %>%
+  summarise(mean_homethatweek = mean(homethatweek_num, na.rm = TRUE), .groups = "drop") %>%
+  filter(!is.na(mean_homethatweek)) %>%
+  t.test(mean_homethatweek ~ quitjob_num, data = ., alternative = "greater")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+
+#H0: there is no correlation between age and children_num among quitters
+#H1: there is a correlation between age and children_num among quitters
+volunteer_endperiod_attitude_performance_wage %>%
+  filter(quitjob_num == 1) %>%
+  t.test(children_num ~ (age > median(age, na.rm = TRUE)),
+         data = ., alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+
+#H0: there is no correlation between age and married_num among quitters
+#H1: there is a correlation between age and married_num among quitters
+volunteer_endperiod_attitude_performance_wage %>%
+  filter(quitjob_num == 1) %>%
+  t.test(married_num ~ (age > median(age, na.rm = TRUE)),
+         data = ., alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+
+#H0: there is no correlation between age and high_educ_num among quitters
+#H1: there is a correlation between age and high_educ_num among quitters
+volunteer_endperiod_attitude_performance_wage %>%
+  filter(quitjob_num == 1) %>%
+  t.test(high_educ_num ~ (age > median(age, na.rm = TRUE)),
+         data = ., alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+
+#H0: there is no correlation between mean(perform1) and age among quitters
+#H1: there is a correlation between mean(perform1) and age among quitters
+volunteer_endperiod_attitude_performance_wage %>%
+  filter(quitjob_num == 1) %>%
+  t.test(perform1 ~ (age > median(age, na.rm = TRUE)),
+         data = ., alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+```
+
+## Group Hypotheses
+
+### Group 7
+
+```{r}
+#H0: There is no difference between group 7 mean(quitjob_num) compared to overall average
+#H1: Group 7 has higher mean(quitjob_num) compared to overall average
+t.test(group7$quitjob_num, volunteer_endperiod_attitude_performance_wage$quitjob_num, alternative = "greater")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: There is no difference between group 7 mean(perform1) compared to overall average
+#H1: Group 7 has lower mean(perform1) compared to overall average
+t.test(group7$perform1, volunteer_endperiod_attitude_performance_wage$perform1, alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+```
+
+### Group 16
+
+```{r}
+#H0: There is no difference between group 16 mean(quitjob_num) compared to overall average
+#H1: Group 16 has higher mean(quitjob_num) compared to overall average
+t.test(group16$quitjob_num, volunteer_endperiod_attitude_performance_wage$quitjob_num, alternative = "greater")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: There is no difference between group 16 mean(perform1) compared to overall average
+#H1: Group 16 has lower mean(perform1) compared to overall average
+t.test(group16$perform1, volunteer_endperiod_attitude_performance_wage$perform1, alternative = "less")
+
+# we fail to reject the null hypothesis, as p-value is above 0.05
+
+#H0: There is no correlation between age and tenure
+#H1: There is a correlation between age and tenure
+t.test(group16$tenure ~ (group16$age > median(group16$age, na.rm = TRUE)),
+       data = group16, alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+```
+
+### Group 40
+
+```{r}
+#H0: There is no difference between group 40 mean(quitjob_num) compared to overall average
+#H1: Group 40 has higher mean(quitjob_num) compared to overall average
+t.test(group40$quitjob_num, volunteer_endperiod_attitude_performance_wage$quitjob_num, alternative = "greater")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: There is no difference between group 40 mean(perform1) compared to overall average
+#H1: Group 40 has lower mean(perform1) compared to overall average
+t.test(group40$perform1, volunteer_endperiod_attitude_performance_wage$perform1, alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+```
+
+### Group 48
+
+```{r}
+#H0: There is no difference between group 48 mean(quitjob_num) compared to overall average
+#H1: Group 48 has higher mean(quitjob_num) compared to overall average
+t.test(group48$quitjob_num, volunteer_endperiod_attitude_performance_wage$quitjob_num, alternative = "greater")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: There is no difference between group 48 mean(perform1) compared to overall average
+#H1: Group 48 has lower mean(perform1) compared to overall average
+t.test(group48$perform1, volunteer_endperiod_attitude_performance_wage$perform1, alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+```
+
+### Group 60
+
+```{r}
+#H0: There is no difference between group 60 mean(quitjob_num) compared to overall average
+#H1: Group 60 has higher mean(quitjob_num) compared to overall average
+t.test(group60$quitjob_num, volunteer_endperiod_attitude_performance_wage$quitjob_num, alternative = "greater")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: There is no difference between group 60 mean(perform1) compared to overall average
+#H1: Group 60 has lower mean(perform1) compared to overall average
+t.test(group60$perform1, volunteer_endperiod_attitude_performance_wage$perform1, alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: There is no relation between age and commute
+#H1: Older Members have higher commute
+t.test(group60$commute ~ (group60$age > median(group60$age, na.rm = TRUE)),
+       data = group60, alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: There is no relation between age and tenure
+#H1: Older Members have higher tenure
+t.test(group60$tenure ~ (group60$age > median(group60$age, na.rm = TRUE)),
+       data = group60, alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: There is no relation between tenure on grosswage
+#H1: Higher tenure leads to higher grosswage
+t.test(group60$grosswage ~ (group60$tenure > median(group60$tenure, na.rm = TRUE)),
+       data = group60, alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: There is no relation between tenure on basewage
+#H1: Higher tenure leads to higher basewage
+t.test(group60$basewage ~ (group60$tenure > median(group60$tenure, na.rm = TRUE)),
+       data = group60, alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: There is no relation between tenure on bonustotal
+#H1: Higher tenure leads to higher bonustotal
+t.test(group60$bonustotal ~ (group60$tenure > median(group60$tenure, na.rm = TRUE)),
+       data = group60, alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: There is no relationship between commute and perform1
+#H1: Higher commute leads to lower perform1
+t.test(group60$perform1 ~ (group60$commute > median(group60$commute, na.rm = TRUE)),
+       data = group60, alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+```
+
+### Top 10 performers
+
+```{r}
+#H0: The variance(basewage) among top performers is equal to the variance(basewage) among the rest
+#H1: The variance(basewage) among top performers is ~ 0
+var.test(top10$basewage, bottom90$basewage)
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: The mean(grosswage) of Top 10 is equal to the mean(grosswage) of the rest
+#H1: The mean(grosswage) of Top 10 is greater than the mean(grosswage) of the rest
+t.test(top10$grosswage, bottom90$grosswage, alternative = "greater")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0 the mean(children_num) of Top 10 is equal to the mean(children_num) of the rest
+#H1: The mean(children_num) of Top 10 is higher than the mean(children_num) of the rest
+t.test(top10$children_num, bottom90$children_num, alternative = "greater")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: The mean(homethatweek_num) of Top 10 is equal to the mean(homethatweek_num) of the rest
+#H1: The mean(homethatweek_num) of Top 10 is = 0.25
+t.test(top10$homethatweek_num, bottom90$homethatweek_num, alternative = "greater")
+
+# we reject the null hypothesis, as p-value is below 0.05
+# result for top 10 is ~ 0.25 (25.4)
+
+#H0: The mean(age) of top performes is equal to the mean(age) of the rest
+#H1: The mean(age) of top performes = 24
+t.test(top10$age, bottom90$age, alternative = "greater")
+
+# we reject the null hypothesis, as p-value is below 0.05
+# result for top 10 is ~ 24 (23.8)
+
+#H0: The mean(tenure) of top performes is equal to the mean(tenure) of the rest
+#H1: The mean(tenure) of top performes > mean(tenure) of the rest
+t.test(top10$tenure, bottom90$tenure, alternative = "greater")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: the mean(promote_switch_num) of top performes is equal to the mean(promote_switch_num) of the rest
+#H1: The mean(promote_switch_num) of top performes > mean(promote_switch_num) of the rest
+t.test(top10$promote_switch_num, bottom90$promote_switch_num, alternative = "greater")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: The mean (quitjob_num) of top performes is equal to the mean(quitjob_num) of the rest
+#H1: The mean(quitjob_num) of top performes < mean(quitjob_num) of the rest
+t.test(top10$quitjob_num, bottom90$quitjob_num, alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: Among top vs. rest, mean(bonustotal) has no effect on quit probability
+#H1: Top performers with higher mean(bonustotal) are less likely to quit than non-performers
+t.test(top10$bonustotal ~ (top10$bonustotal > median(top10$bonustotal, na.rm = TRUE)),
+       data = top10, alternative = "less")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: mean(positive) does not differ from homethatweek_num
+#H1: higher homethatweek_num leads to higher mean(positive)
+t.test(top10$positive ~ (top10$homethatweek_num > median(top10$homethatweek_num, na.rm = TRUE)),
+       data = top10, alternative = "greater")
+
+# we reject the null hypothesis, as p-value is below 0.05
+
+#H0: mean(negative) does not differ from homethatweek_num
+#H1: higher homethatweek_num leads to lower mean(negative)
+t.test(top10$negative ~ (top10$homethatweek_num > median(top10$homethatweek_num, na.rm = TRUE)),
+       data = top10, alternative = "greater")
+
+# we fail to reject the null hypothesis, as p-value is above 0.05
+
+#H0: mean(exhaustion) does not differ from homethatweek_num
+#H1: higher homethatweek_num leads to lower mean(exhaustion)
+t.test(top10$exhaustion ~ (top10$homethatweek_num > median(top10$homethatweek_num, na.rm = TRUE)),
+       data = top10, alternative = "greater")
+
+# we fail to reject the null hypothesis, as p-value is above 0.05
+```
