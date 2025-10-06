@@ -349,21 +349,31 @@ stargazer(as.data.frame(wage), type = "text", median = TRUE, header = TRUE)
 All columns again contain missing data. Grosswage is not the sum of basewage+bonustotal all the time:\
 Cases:
 
--   NA in bonus: –\> 0
+-   NA in basewage and grosswage or basewage and bonus total or bonustotal and grosswage: remove row
 
--   NA in basewage: remove row
+-   NA in basewage but grosswage and bonustotal are given: basewage = grosswage - bonustotal
+
+-   NA in bonustotal but grosswage and basewage are given: bonustotal = grosswage - basewage
 
 -   Grosswage != bonuswage+basewage: recalculate
 
-```{r}
-# case 1
-wage <- wage %>% mutate(bonustotal = ifelse(is.na(bonustotal),0,bonustotal))
+-   wage yearmonth sometimes misses the month
 
+```{r}
 # case 2
-wage <- wage %>% filter(!is.na(basewage))
+wage <- wage %>% filter(!is.na(basewage) & !is.na(grosswage) | !is.na(bonustotal) & !is.na(grosswage) | !is.na(basewage) & !is.na(bonustotal))
 
 # case 3
+wage <- wage %>% mutate(basewage = ifelse(is.na(basewage), grosswage-bonustotal, basewage))
+
+# case 4
+wage <- wage %>% mutate(bonustotal = ifelse(is.na(bonustotal), grosswage-basewage, bonustotal))
+
+# case 5
 wage <- wage %>% mutate(grosswage = ifelse(grosswage != bonustotal+basewage, bonustotal+basewage, grosswage))
+
+# case 6
+wage <- wage %>% filter(nchar(year_month)==6)
 ```
 
 # Merging data together
