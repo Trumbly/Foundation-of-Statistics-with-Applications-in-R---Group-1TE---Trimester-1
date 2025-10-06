@@ -219,7 +219,7 @@ stargazer(as.data.frame(volunteer), type = "text", median = TRUE, header = TRUE)
 glimpse(attitude)
 stargazer(as.data.frame(attitude), type = "text", median = TRUE, header = TRUE)
 # checking unique values to decide int vs dbl
-unique(attitude$exhausting)
+unique(attitude$exhaustion)
 unique(attitude$positive)
 unique(attitude$negative)
 ```
